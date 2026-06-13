@@ -1,0 +1,447 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  TEACHER
+}
+
+enum SubjectType {
+  ACADEMIC
+  TECHNICAL
+}
+
+enum SubjectStatus {
+  PENDING
+  APPROVED
+  COMPLETIVA
+  EXTRAORDINARIA
+  SPECIAL
+  FAILED
+}
+
+enum ImportType {
+  STUDENTS
+  ACADEMIC_GRADES
+  TECHNICAL_GRADES
+}
+
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  IMPORT
+  GENERATE_REPORT
+}
+
+model School {
+  id        String   @id @default(uuid())
+  name      String
+  code      String   @unique
+  address   String?
+  phone     String?
+  logoUrl   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  users                     User[]
+  teachers                  Teacher[]
+  courses                   Course[]
+  students                  Student[]
+  subjects                  Subject[]
+  schoolYears               SchoolYear[]
+  teacherAssignments        TeacherAssignment[]
+  academicGrades            AcademicGrade[]
+  academicSubjectResults    AcademicSubjectResult[]
+  technicalLearningOutcomes TechnicalLearningOutcome[]
+  technicalGrades           TechnicalGrade[]
+  technicalSubjectResults   TechnicalSubjectResult[]
+  importJobs                ImportJob[]
+  auditLogs                 AuditLog[]
+
+  @@map("schools")
+}
+
+model SchoolYear {
+  id        String   @id @default(uuid())
+  schoolId  String
+  name      String
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  school                  School                   @relation(fields: [schoolId], references: [id])
+  courses                 Course[]
+  students                Student[]
+  teacherAssignments      TeacherAssignment[]
+  academicGrades          AcademicGrade[]
+  academicSubjectResults  AcademicSubjectResult[]
+  technicalGrades         TechnicalGrade[]
+  technicalSubjectResults TechnicalSubjectResult[]
+  importJobs              ImportJob[]
+
+  @@unique([schoolId, name])
+  @@index([schoolId])
+  @@map("school_years")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  schoolId  String?
+  teacherId String?  @unique
+  email     String   @unique
+  fullName  String
+  role      UserRole
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  school     School?     @relation(fields: [schoolId], references: [id])
+  teacher    Teacher?    @relation(fields: [teacherId], references: [id])
+  importJobs ImportJob[]
+  auditLogs  AuditLog[]
+
+  @@index([schoolId])
+  @@map("users")
+}
+
+model Teacher {
+  id        String   @id @default(uuid())
+  schoolId  String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  school      School              @relation(fields: [schoolId], references: [id])
+  users       User[]
+  titularOf   Course[]            @relation("CourseTitular")
+  assignments TeacherAssignment[]
+
+  @@index([schoolId])
+  @@map("teachers")
+}
+
+model Course {
+  id           String   @id @default(uuid())
+  schoolId     String
+  schoolYearId String
+  name         String
+  grade        String
+  section      String?
+  area         String?
+  modality     String?
+  titularId    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdBy    String?
+  updatedBy    String?
+
+  school                  School                   @relation(fields: [schoolId], references: [id])
+  schoolYear              SchoolYear               @relation(fields: [schoolYearId], references: [id])
+  titular                 Teacher?                 @relation("CourseTitular", fields: [titularId], references: [id])
+  students                Student[]
+  teacherAssignments      TeacherAssignment[]
+  academicGrades          AcademicGrade[]
+  academicSubjectResults  AcademicSubjectResult[]
+  technicalGrades         TechnicalGrade[]
+  technicalSubjectResults TechnicalSubjectResult[]
+
+  @@index([schoolId, schoolYearId])
+  @@index([titularId])
+  @@map("courses")
+}
+
+model Student {
+  id           String   @id @default(uuid())
+  schoolId     String
+  schoolYearId String
+  courseId     String
+  listNumber   Int
+  firstName    String
+  lastName     String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdBy    String?
+  updatedBy    String?
+
+  school                  School                   @relation(fields: [schoolId], references: [id])
+  schoolYear              SchoolYear               @relation(fields: [schoolYearId], references: [id])
+  course                  Course                   @relation(fields: [courseId], references: [id])
+  academicGrades          AcademicGrade[]
+  academicSubjectResults  AcademicSubjectResult[]
+  technicalGrades         TechnicalGrade[]
+  technicalSubjectResults TechnicalSubjectResult[]
+
+  @@unique([schoolId, schoolYearId, courseId, listNumber])
+  @@index([schoolId, schoolYearId])
+  @@index([courseId])
+  @@map("students")
+}
+
+model Subject {
+  id        String      @id @default(uuid())
+  schoolId  String
+  name      String
+  type      SubjectType
+  isActive  Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  school                    School                     @relation(fields: [schoolId], references: [id])
+  teacherAssignments        TeacherAssignment[]
+  academicGrades            AcademicGrade[]
+  academicSubjectResults    AcademicSubjectResult[]
+  technicalLearningOutcomes TechnicalLearningOutcome[]
+  technicalGrades           TechnicalGrade[]
+  technicalSubjectResults   TechnicalSubjectResult[]
+
+  @@unique([schoolId, name])
+  @@index([schoolId, type])
+  @@map("subjects")
+}
+
+model TeacherAssignment {
+  id           String   @id @default(uuid())
+  schoolId     String
+  schoolYearId String
+  teacherId    String
+  subjectId    String
+  courseId     String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdBy    String?
+  updatedBy    String?
+
+  school     School     @relation(fields: [schoolId], references: [id])
+  schoolYear SchoolYear @relation(fields: [schoolYearId], references: [id])
+  teacher    Teacher    @relation(fields: [teacherId], references: [id])
+  subject    Subject    @relation(fields: [subjectId], references: [id])
+  course     Course     @relation(fields: [courseId], references: [id])
+
+  @@unique([schoolId, schoolYearId, courseId, subjectId])
+  @@index([teacherId])
+  @@index([schoolId, schoolYearId])
+  @@map("teacher_assignments")
+}
+
+model AcademicGrade {
+  id           String   @id @default(uuid())
+  schoolId     String
+  schoolYearId String
+  courseId     String
+  studentId    String
+  subjectId    String
+  blockNumber  Int
+  p1           Decimal? @db.Decimal(5, 2)
+  rp1          Decimal? @db.Decimal(5, 2)
+  p2           Decimal? @db.Decimal(5, 2)
+  rp2          Decimal? @db.Decimal(5, 2)
+  p3           Decimal? @db.Decimal(5, 2)
+  rp3          Decimal? @db.Decimal(5, 2)
+  p4           Decimal? @db.Decimal(5, 2)
+  rp4          Decimal? @db.Decimal(5, 2)
+  pc           Decimal? @db.Decimal(5, 1)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdBy    String?
+  updatedBy    String?
+
+  school     School     @relation(fields: [schoolId], references: [id])
+  schoolYear SchoolYear @relation(fields: [schoolYearId], references: [id])
+  course     Course     @relation(fields: [courseId], references: [id])
+  student    Student    @relation(fields: [studentId], references: [id])
+  subject    Subject    @relation(fields: [subjectId], references: [id])
+
+  @@unique([schoolId, schoolYearId, studentId, subjectId, blockNumber])
+  @@index([courseId, subjectId])
+  @@index([studentId])
+  @@map("academic_grades")
+}
+
+model AcademicSubjectResult {
+  id           String        @id @default(uuid())
+  schoolId     String
+  schoolYearId String
+  courseId     String
+  studentId    String
+  subjectId    String
+  pc1          Decimal?      @db.Decimal(5, 1)
+  pc2          Decimal?      @db.Decimal(5, 1)
+  pc3          Decimal?      @db.Decimal(5, 1)
+  pc4          Decimal?      @db.Decimal(5, 1)
+  cf           Int?
+  cec          Int?
+  ccf          Int?
+  ceex         Int?
+  cexf         Int?
+  ce           Int?
+  cef          Int?
+  status       SubjectStatus @default(PENDING)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  createdBy    String?
+  updatedBy    String?
+
+  school     School     @relation(fields: [schoolId], references: [id])
+  schoolYear SchoolYear @relation(fields: [schoolYearId], references: [id])
+  course     Course     @relation(fields: [courseId], references: [id])
+  student    Student    @relation(fields: [studentId], references: [id])
+  subject    Subject    @relation(fields: [subjectId], references: [id])
+
+  @@unique([schoolId, schoolYearId, studentId, subjectId])
+  @@index([courseId, subjectId])
+  @@index([status])
+  @@map("academic_subject_results")
+}
+
+model TechnicalLearningOutcome {
+  id        String   @id @default(uuid())
+  schoolId  String
+  subjectId String
+  code      String
+  name      String
+  weight    Decimal  @db.Decimal(5, 2)
+  order     Int
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  school          School           @relation(fields: [schoolId], references: [id])
+  subject         Subject          @relation(fields: [subjectId], references: [id])
+  technicalGrades TechnicalGrade[]
+
+  @@unique([schoolId, subjectId, code])
+  @@unique([schoolId, subjectId, order])
+  @@index([schoolId])
+  @@map("technical_learning_outcomes")
+}
+
+model TechnicalGrade {
+  id                String   @id @default(uuid())
+  schoolId          String
+  schoolYearId      String
+  courseId          String
+  studentId         String
+  subjectId         String
+  learningOutcomeId String
+  ordinaryScore     Decimal? @db.Decimal(5, 2)
+  recovery1Score    Decimal? @db.Decimal(5, 2)
+  recovery2Score    Decimal? @db.Decimal(5, 2)
+  specialScore      Decimal? @db.Decimal(5, 2)
+  validScore        Decimal? @db.Decimal(5, 2)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  createdBy         String?
+  updatedBy         String?
+
+  school          School                   @relation(fields: [schoolId], references: [id])
+  schoolYear      SchoolYear               @relation(fields: [schoolYearId], references: [id])
+  course          Course                   @relation(fields: [courseId], references: [id])
+  student         Student                  @relation(fields: [studentId], references: [id])
+  subject         Subject                  @relation(fields: [subjectId], references: [id])
+  learningOutcome TechnicalLearningOutcome @relation(fields: [learningOutcomeId], references: [id])
+
+  @@unique([schoolId, schoolYearId, studentId, learningOutcomeId])
+  @@index([courseId, subjectId])
+  @@index([studentId])
+  @@map("technical_grades")
+}
+
+model TechnicalSubjectResult {
+  id           String        @id @default(uuid())
+  schoolId     String
+  schoolYearId String
+  courseId     String
+  studentId    String
+  subjectId    String
+  totalScore   Decimal?      @db.Decimal(5, 2)
+  finalScore   Int?
+  status       SubjectStatus @default(PENDING)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  createdBy    String?
+  updatedBy    String?
+
+  school     School     @relation(fields: [schoolId], references: [id])
+  schoolYear SchoolYear @relation(fields: [schoolYearId], references: [id])
+  course     Course     @relation(fields: [courseId], references: [id])
+  student    Student    @relation(fields: [studentId], references: [id])
+  subject    Subject    @relation(fields: [subjectId], references: [id])
+
+  @@unique([schoolId, schoolYearId, studentId, subjectId])
+  @@index([courseId, subjectId])
+  @@index([status])
+  @@map("technical_subject_results")
+}
+
+model ImportJob {
+  id           String       @id @default(uuid())
+  schoolId     String
+  schoolYearId String
+  userId       String
+  type         ImportType
+  fileName     String
+  status       ImportStatus @default(PENDING)
+  totalRows    Int          @default(0)
+  successRows  Int          @default(0)
+  errorRows    Int          @default(0)
+  errors       Json?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  school     School     @relation(fields: [schoolId], references: [id])
+  schoolYear SchoolYear @relation(fields: [schoolYearId], references: [id])
+  user       User       @relation(fields: [userId], references: [id])
+
+  @@index([schoolId, schoolYearId])
+  @@index([userId])
+  @@map("import_jobs")
+}
+
+model AuditLog {
+  id        String      @id @default(uuid())
+  schoolId  String
+  userId    String?
+  entity    String
+  entityId  String
+  action    AuditAction
+  oldValue  Json?
+  newValue  Json?
+  createdAt DateTime    @default(now())
+
+  school School @relation(fields: [schoolId], references: [id])
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([schoolId, entity, entityId])
+  @@index([userId])
+  @@index([action])
+  @@map("audit_logs")
+}
