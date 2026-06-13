@@ -1,6 +1,6 @@
 import { IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 
-export class FinalEvaluationDto {
+export class AcademicFinalEvaluationDto {
   @IsUUID()
   studentId: string;
 

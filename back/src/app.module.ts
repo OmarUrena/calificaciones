@@ -1,11 +1,17 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AcademicGradesModule } from './academic-grades/academic-grades.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { CommonModule } from './common/common.module';
+import { CourseTitularGuard } from './common/guards/course-titular.guard';
+import { RolesGuard } from './common/guards/roles.guard';
+import { SchoolAccessGuard } from './common/guards/school-access.guard';
+import { TeacherAssignmentGuard } from './common/guards/teacher-assignment.guard';
 import { ConfigurationModule } from './config/configuration.module';
 import { CoursesModule } from './courses/courses.module';
 import { ImportsModule } from './imports/imports.module';
@@ -43,6 +49,28 @@ import { UsersModule } from './users/users.module';
     AuditModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: SchoolAccessGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: TeacherAssignmentGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: CourseTitularGuard,
+    },
+  ],
 })
 export class AppModule {}
