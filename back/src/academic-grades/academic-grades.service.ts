@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, SubjectStatus, SubjectType, UserRole } from '@prisma/client';
 
+import { AuditService } from '../audit/audit.service';
 import { PermissionsService } from '../common/services/permissions.service';
 import { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import { rethrowKnownPrismaError } from '../common/utils/prisma-error.util';
@@ -45,6 +46,7 @@ export class AcademicGradesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly permissionsService: PermissionsService,
+    private readonly auditService: AuditService,
   ) {}
 
   async findByCourseAndSubject(courseId: string, subjectId: string, user: AuthenticatedUser) {
@@ -93,6 +95,13 @@ export class AcademicGradesService {
         },
       });
       const result = await this.recalculateResult(context, user.id);
+      await this.auditService.logCreate({
+        schoolId: grade.schoolId,
+        userId: user.id,
+        entity: 'AcademicGrade',
+        entityId: grade.id,
+        newValue: { grade, result },
+      });
 
       return { grade, result };
     } catch (error) {
@@ -129,6 +138,14 @@ export class AcademicGradesService {
       },
     });
     const result = await this.recalculateResult(context, user.id);
+    await this.auditService.logUpdate({
+      schoolId: grade.schoolId,
+      userId: user.id,
+      entity: 'AcademicGrade',
+      entityId: grade.id,
+      oldValue: current,
+      newValue: { grade, result },
+    });
 
     return { grade, result };
   }
@@ -172,7 +189,8 @@ export class AcademicGradesService {
       ce: dto.ce ?? current.ce,
     });
 
-    return this.prisma.academicSubjectResult.update({
+    const oldValue = current;
+    const result = await this.prisma.academicSubjectResult.update({
       where: {
         schoolId_schoolYearId_studentId_subjectId: {
           schoolId: context.schoolId,
@@ -192,6 +210,16 @@ export class AcademicGradesService {
         updatedBy: user.id,
       },
     });
+    await this.auditService.logUpdate({
+      schoolId: result.schoolId,
+      userId: user.id,
+      entity: 'AcademicSubjectResult',
+      entityId: result.id,
+      oldValue,
+      newValue: result,
+    });
+
+    return result;
   }
 
   async evaluateSpecialRight(studentId: string, user: AuthenticatedUser) {
@@ -224,6 +252,14 @@ export class AcademicGradesService {
         status,
         updatedBy: user.id,
       },
+    });
+    await this.auditService.logUpdate({
+      schoolId: student.schoolId,
+      userId: user.id,
+      entity: 'AcademicSubjectResult',
+      entityId: studentId,
+      oldValue: { failedExtraordinarySubjects: failedExtraordinaryResults.length },
+      newValue: { status },
     });
 
     return {

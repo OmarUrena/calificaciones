@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
+import { AuditService } from '../audit/audit.service';
 import { PermissionsService } from '../common/services/permissions.service';
 import { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import { rethrowKnownPrismaError } from '../common/utils/prisma-error.util';
@@ -18,6 +19,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly permissionsService: PermissionsService,
+    private readonly auditService: AuditService,
   ) {}
 
   async create(dto: CreateUserDto, user: AuthenticatedUser) {
@@ -25,13 +27,24 @@ export class UsersService {
     await this.validateTeacher(dto.schoolId, dto.teacherId);
 
     try {
-      return await this.prisma.user.create({
+      const createdUser = await this.prisma.user.create({
         data: {
           ...dto,
           createdBy: user.id,
           updatedBy: user.id,
         },
       });
+      if (createdUser.schoolId) {
+        await this.auditService.logCreate({
+          schoolId: createdUser.schoolId,
+          userId: user.id,
+          entity: 'User',
+          entityId: createdUser.id,
+          newValue: createdUser,
+        });
+      }
+
+      return createdUser;
     } catch (error) {
       rethrowKnownPrismaError(error);
     }
@@ -68,28 +81,51 @@ export class UsersService {
     await this.validateTeacher(schoolId, dto.teacherId);
 
     try {
-      return await this.prisma.user.update({
+      const updatedUser = await this.prisma.user.update({
         where: { id },
         data: {
           ...dto,
           updatedBy: user.id,
         },
       });
+      if (updatedUser.schoolId) {
+        await this.auditService.logUpdate({
+          schoolId: updatedUser.schoolId,
+          userId: user.id,
+          entity: 'User',
+          entityId: updatedUser.id,
+          oldValue: current,
+          newValue: updatedUser,
+        });
+      }
+
+      return updatedUser;
     } catch (error) {
       rethrowKnownPrismaError(error);
     }
   }
 
   async remove(id: string, user: AuthenticatedUser) {
-    await this.findOne(id, user);
+    const oldValue = await this.findOne(id, user);
 
-    return this.prisma.user.update({
+    const updatedUser = await this.prisma.user.update({
       where: { id },
       data: {
         isActive: false,
         updatedBy: user.id,
       },
     });
+    if (updatedUser.schoolId) {
+      await this.auditService.logDelete({
+        schoolId: updatedUser.schoolId,
+        userId: user.id,
+        entity: 'User',
+        entityId: updatedUser.id,
+        oldValue,
+      });
+    }
+
+    return updatedUser;
   }
 
   private ensureCanManageUserPayload(

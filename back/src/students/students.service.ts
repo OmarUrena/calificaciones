@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
+import { AuditService } from '../audit/audit.service';
 import { PermissionsService } from '../common/services/permissions.service';
 import { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import { rethrowKnownPrismaError } from '../common/utils/prisma-error.util';
@@ -13,6 +14,7 @@ export class StudentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly permissionsService: PermissionsService,
+    private readonly auditService: AuditService,
   ) {}
 
   async create(dto: CreateStudentDto, user: AuthenticatedUser) {
@@ -20,13 +22,22 @@ export class StudentsService {
     await this.validateCourseAndSchoolYear(dto.schoolId, dto.schoolYearId, dto.courseId);
 
     try {
-      return await this.prisma.student.create({
+      const student = await this.prisma.student.create({
         data: {
           ...dto,
           createdBy: user.id,
           updatedBy: user.id,
         },
       });
+      await this.auditService.logCreate({
+        schoolId: student.schoolId,
+        userId: user.id,
+        entity: 'Student',
+        entityId: student.id,
+        newValue: student,
+      });
+
+      return student;
     } catch (error) {
       rethrowKnownPrismaError(error);
     }
@@ -55,28 +66,47 @@ export class StudentsService {
   }
 
   async update(id: string, dto: UpdateStudentDto, user: AuthenticatedUser) {
-    const student = await this.findOne(id, user);
-    const schoolYearId = dto.schoolYearId ?? student.schoolYearId;
-    const courseId = dto.courseId ?? student.courseId;
+    const oldValue = await this.findOne(id, user);
+    const schoolYearId = dto.schoolYearId ?? oldValue.schoolYearId;
+    const courseId = dto.courseId ?? oldValue.courseId;
 
-    await this.validateCourseAndSchoolYear(student.schoolId, schoolYearId, courseId);
+    await this.validateCourseAndSchoolYear(oldValue.schoolId, schoolYearId, courseId);
 
     try {
-      return await this.prisma.student.update({
+      const student = await this.prisma.student.update({
         where: { id },
         data: {
           ...dto,
           updatedBy: user.id,
         },
       });
+      await this.auditService.logUpdate({
+        schoolId: student.schoolId,
+        userId: user.id,
+        entity: 'Student',
+        entityId: student.id,
+        oldValue,
+        newValue: student,
+      });
+
+      return student;
     } catch (error) {
       rethrowKnownPrismaError(error);
     }
   }
 
   async remove(id: string, user: AuthenticatedUser) {
-    await this.findOne(id, user);
-    return this.prisma.student.delete({ where: { id } });
+    const oldValue = await this.findOne(id, user);
+    const student = await this.prisma.student.delete({ where: { id } });
+    await this.auditService.logDelete({
+      schoolId: student.schoolId,
+      userId: user.id,
+      entity: 'Student',
+      entityId: student.id,
+      oldValue,
+    });
+
+    return student;
   }
 
   private async validateCourseAndSchoolYear(

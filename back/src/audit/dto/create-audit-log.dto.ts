@@ -1,5 +1,5 @@
 import { AuditAction } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+import { IsEnum, IsObject, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
 
 export class CreateAuditLogDto {
   @IsUUID()
@@ -19,4 +19,12 @@ export class CreateAuditLogDto {
 
   @IsEnum(AuditAction)
   action: AuditAction;
+
+  @IsOptional()
+  @IsObject()
+  oldValue?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsObject()
+  newValue?: Record<string, unknown>;
 }

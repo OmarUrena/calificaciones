@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
+import { AuditService } from '../audit/audit.service';
 import { PermissionsService } from '../common/services/permissions.service';
 import { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import { PrismaService } from '../prisma/prisma.service';
@@ -12,18 +13,28 @@ export class TeachersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly permissionsService: PermissionsService,
+    private readonly auditService: AuditService,
   ) {}
 
-  create(dto: CreateTeacherDto, user: AuthenticatedUser) {
+  async create(dto: CreateTeacherDto, user: AuthenticatedUser) {
     this.permissionsService.ensureCanAccessSchool(user, dto.schoolId);
 
-    return this.prisma.teacher.create({
+    const teacher = await this.prisma.teacher.create({
       data: {
         ...dto,
         createdBy: user.id,
         updatedBy: user.id,
       },
     });
+    await this.auditService.logCreate({
+      schoolId: teacher.schoolId,
+      userId: user.id,
+      entity: 'Teacher',
+      entityId: teacher.id,
+      newValue: teacher,
+    });
+
+    return teacher;
   }
 
   findAll(user: AuthenticatedUser) {
@@ -45,19 +56,38 @@ export class TeachersService {
   }
 
   async update(id: string, dto: UpdateTeacherDto, user: AuthenticatedUser) {
-    await this.findOne(id, user);
+    const oldValue = await this.findOne(id, user);
 
-    return this.prisma.teacher.update({
+    const teacher = await this.prisma.teacher.update({
       where: { id },
       data: {
         ...dto,
         updatedBy: user.id,
       },
     });
+    await this.auditService.logUpdate({
+      schoolId: teacher.schoolId,
+      userId: user.id,
+      entity: 'Teacher',
+      entityId: teacher.id,
+      oldValue,
+      newValue: teacher,
+    });
+
+    return teacher;
   }
 
   async remove(id: string, user: AuthenticatedUser) {
-    await this.findOne(id, user);
-    return this.prisma.teacher.delete({ where: { id } });
+    const oldValue = await this.findOne(id, user);
+    const teacher = await this.prisma.teacher.delete({ where: { id } });
+    await this.auditService.logDelete({
+      schoolId: teacher.schoolId,
+      userId: user.id,
+      entity: 'Teacher',
+      entityId: teacher.id,
+      oldValue,
+    });
+
+    return teacher;
   }
 }

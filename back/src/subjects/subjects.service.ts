@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
+import { AuditService } from '../audit/audit.service';
 import { PermissionsService } from '../common/services/permissions.service';
 import { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import { rethrowKnownPrismaError } from '../common/utils/prisma-error.util';
@@ -13,19 +14,29 @@ export class SubjectsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly permissionsService: PermissionsService,
+    private readonly auditService: AuditService,
   ) {}
 
   async create(dto: CreateSubjectDto, user: AuthenticatedUser) {
     this.permissionsService.ensureCanAccessSchool(user, dto.schoolId);
 
     try {
-      return await this.prisma.subject.create({
+      const subject = await this.prisma.subject.create({
         data: {
           ...dto,
           createdBy: user.id,
           updatedBy: user.id,
         },
       });
+      await this.auditService.logCreate({
+        schoolId: subject.schoolId,
+        userId: user.id,
+        entity: 'Subject',
+        entityId: subject.id,
+        newValue: subject,
+      });
+
+      return subject;
     } catch (error) {
       rethrowKnownPrismaError(error);
     }
@@ -82,30 +93,49 @@ export class SubjectsService {
   }
 
   async update(id: string, dto: UpdateSubjectDto, user: AuthenticatedUser) {
-    await this.findOne(id, user);
+    const oldValue = await this.findOne(id, user);
 
     try {
-      return await this.prisma.subject.update({
+      const subject = await this.prisma.subject.update({
         where: { id },
         data: {
           ...dto,
           updatedBy: user.id,
         },
       });
+      await this.auditService.logUpdate({
+        schoolId: subject.schoolId,
+        userId: user.id,
+        entity: 'Subject',
+        entityId: subject.id,
+        oldValue,
+        newValue: subject,
+      });
+
+      return subject;
     } catch (error) {
       rethrowKnownPrismaError(error);
     }
   }
 
   async remove(id: string, user: AuthenticatedUser) {
-    await this.findOne(id, user);
+    const oldValue = await this.findOne(id, user);
 
-    return this.prisma.subject.update({
+    const subject = await this.prisma.subject.update({
       where: { id },
       data: {
         isActive: false,
         updatedBy: user.id,
       },
     });
+    await this.auditService.logDelete({
+      schoolId: subject.schoolId,
+      userId: user.id,
+      entity: 'Subject',
+      entityId: subject.id,
+      oldValue,
+    });
+
+    return subject;
   }
 }

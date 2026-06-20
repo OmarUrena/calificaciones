@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
+import { AuditService } from '../audit/audit.service';
 import { PermissionsService } from '../common/services/permissions.service';
 import { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import { rethrowKnownPrismaError } from '../common/utils/prisma-error.util';
@@ -13,6 +14,7 @@ export class TeacherAssignmentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly permissionsService: PermissionsService,
+    private readonly auditService: AuditService,
   ) {}
 
   async create(dto: CreateTeacherAssignmentDto, user: AuthenticatedUser) {
@@ -20,13 +22,22 @@ export class TeacherAssignmentsService {
     await this.validateAssignmentRelations(dto);
 
     try {
-      return await this.prisma.teacherAssignment.create({
+      const assignment = await this.prisma.teacherAssignment.create({
         data: {
           ...dto,
           createdBy: user.id,
           updatedBy: user.id,
         },
       });
+      await this.auditService.logCreate({
+        schoolId: assignment.schoolId,
+        userId: user.id,
+        entity: 'TeacherAssignment',
+        entityId: assignment.id,
+        newValue: assignment,
+      });
+
+      return assignment;
     } catch (error) {
       rethrowKnownPrismaError(error);
     }
@@ -64,28 +75,47 @@ export class TeacherAssignmentsService {
     await this.validateAssignmentRelations(next);
 
     try {
-      return await this.prisma.teacherAssignment.update({
+      const assignment = await this.prisma.teacherAssignment.update({
         where: { id },
         data: {
           ...dto,
           updatedBy: user.id,
         },
       });
+      await this.auditService.logUpdate({
+        schoolId: assignment.schoolId,
+        userId: user.id,
+        entity: 'TeacherAssignment',
+        entityId: assignment.id,
+        oldValue: current,
+        newValue: assignment,
+      });
+
+      return assignment;
     } catch (error) {
       rethrowKnownPrismaError(error);
     }
   }
 
   async remove(id: string, user: AuthenticatedUser) {
-    await this.findAccessibleById(id, user);
+    const oldValue = await this.findAccessibleById(id, user);
 
-    return this.prisma.teacherAssignment.update({
+    const assignment = await this.prisma.teacherAssignment.update({
       where: { id },
       data: {
         isActive: false,
         updatedBy: user.id,
       },
     });
+    await this.auditService.logDelete({
+      schoolId: assignment.schoolId,
+      userId: user.id,
+      entity: 'TeacherAssignment',
+      entityId: assignment.id,
+      oldValue,
+    });
+
+    return assignment;
   }
 
   private async findAccessibleById(id: string, user: AuthenticatedUser) {
