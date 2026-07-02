@@ -1,5 +1,25 @@
 <!-- BEGIN:nextjs-agent-rules -->
-# This is NOT the Next.js you know
+# AGENTS.md
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
-<!-- END:nextjs-agent-rules -->
+## Proyecto
+Este repositorio contiene CalifApp:
+- back/: backend NestJS + Prisma + Supabase PostgreSQL
+- front/: frontend Next.js + TypeScript + Tailwind + shadcn/ui
+
+## Reglas generales
+- Trabaja solo en la carpeta indicada por el usuario.
+- No cambies reglas de negocio sin pedir confirmación.
+- No elimines archivos existentes sin explicar por qué.
+- Mantén el código modular, tipado y en español cuando sea visible para usuarios.
+
+## Backend
+- Multi-escuela obligatorio.
+- Todo recurso escolar debe filtrarse por schoolId.
+- Roles: SUPER_ADMIN, ADMIN, TEACHER.
+- Las reglas de calificación están en PROJECT_CONTEXT.md.
+
+## Frontend
+- Estilo formal institucional.
+- Colores azules y grises.
+- Sin tema oscuro.
+- Toda la app web va en front/.

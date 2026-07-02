@@ -8,4 +8,12 @@ export type AuthenticatedUser = {
   fullName: string;
   role: UserRole;
   isActive: boolean;
+  school?: {
+    id: string;
+    name: string;
+  } | null;
+  activeSchoolYear?: {
+    id: string;
+    name: string;
+  } | null;
 };

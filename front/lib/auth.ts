@@ -1,23 +1,36 @@
+import { createClient } from "@supabase/supabase-js";
+
 import { apiFetch, clearStoredToken, setStoredToken } from "@/lib/api";
-import type { CurrentUser, LoginCredentials, LoginResponse, UserRole } from "@/types/auth";
+import type { CurrentUser, LoginCredentials, UserRole } from "@/types/auth";
 
 const TOKEN_COOKIE_NAME = "califapp_token";
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+const supabase =
+  supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
 export async function login(credentials: LoginCredentials) {
-  const response = await apiFetch<LoginResponse>("/auth/login", {
-    method: "POST",
-    body: JSON.stringify(credentials),
-  });
-  const token = getTokenFromLoginResponse(response);
-
-  if (!token) {
-    throw new Error("La respuesta de login no incluyó token de sesión.");
+  if (!supabase) {
+    throw new Error("Faltan NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY.");
   }
 
+  const { data, error } = await supabase.auth.signInWithPassword(credentials);
+
+  if (error || !data.session?.access_token) {
+    throw new Error(error?.message ?? "No se pudo iniciar sesión con Supabase.");
+  }
+
+  const token = data.session.access_token;
   setStoredToken(token);
   setAuthCookie(token);
 
-  return response;
+  const user = await getCurrentUser();
+
+  return {
+    accessToken: token,
+    user,
+  };
 }
 
 export async function getCurrentUser() {
@@ -25,6 +38,7 @@ export async function getCurrentUser() {
 }
 
 export function logout() {
+  void supabase?.auth.signOut();
   clearStoredToken();
   clearAuthCookie();
 }
@@ -33,10 +47,6 @@ export function getRoleRedirectPath(role: UserRole) {
   if (role === "SUPER_ADMIN") return "/schools";
   if (role === "TEACHER") return "/my-subjects";
   return "/dashboard";
-}
-
-function getTokenFromLoginResponse(response: LoginResponse) {
-  return response.accessToken ?? response.token ?? response.session?.access_token ?? null;
 }
 
 function setAuthCookie(token: string) {

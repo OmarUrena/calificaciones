@@ -5,8 +5,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-inter), Arial, Helvetica, sans-serif;
+  --font-mono: Consolas, "Liberation Mono", monospace;
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -102,10 +102,12 @@
   }
   html {
     @apply font-sans;
+    font-size: 17px;
   }
 
   body {
     min-width: 320px;
+    line-height: 1.55;
   }
 }
 
@@ -119,43 +121,71 @@
   }
 
   .institutional-title {
-    @apply text-2xl font-semibold tracking-tight text-institutional-gray-dark;
+    @apply text-3xl font-semibold tracking-tight text-institutional-gray-dark;
   }
 
   .institutional-subtitle {
-    @apply mt-1 text-sm text-institutional-gray;
+    @apply mt-1 text-base text-institutional-gray;
   }
 
   .admin-card {
-    @apply rounded-lg border border-border bg-card p-5 shadow-sm;
+    @apply rounded-lg border border-border bg-card p-6 shadow-sm;
   }
 
   .compact-table {
-    @apply w-full border-collapse text-sm;
+    @apply w-full border-collapse text-base;
   }
 
   .compact-table th {
-    @apply border border-border bg-institutional-blue-light px-3 py-2 text-left font-semibold text-institutional-gray-dark;
+    @apply border border-border bg-institutional-blue-light px-3 py-2.5 text-left font-semibold text-institutional-gray-dark;
   }
 
   .compact-table td {
-    @apply border border-border bg-white px-3 py-2 text-institutional-gray-dark;
+    @apply border border-border bg-white px-3 py-2.5 text-institutional-gray-dark;
   }
 
   .compact-table input {
-    @apply h-8 rounded-md border border-input bg-white px-2 text-center text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20;
+    @apply h-9 rounded-md border border-input bg-white px-2 text-center text-base outline-none focus:border-primary focus:ring-2 focus:ring-primary/20;
+  }
+
+  .form-input {
+    @apply h-11 w-full rounded-md border border-input bg-white px-3 text-base text-foreground shadow-sm outline-none transition-colors placeholder:text-institutional-gray focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-secondary disabled:text-institutional-gray;
+  }
+
+  .form-control {
+    @apply h-11 w-full rounded-md border border-input bg-white px-3 text-base text-foreground shadow-sm outline-none transition-colors placeholder:text-institutional-gray focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-secondary disabled:text-institutional-gray;
+  }
+
+  .form-control-error {
+    @apply border-red-500 focus:border-red-600 focus:ring-red-100;
+  }
+
+  .form-field {
+    @apply space-y-1.5;
+  }
+
+  .form-label {
+    @apply block text-base font-semibold text-institutional-gray-dark;
+  }
+
+  .form-help {
+    @apply text-sm text-institutional-gray;
+  }
+
+  .form-error {
+    @apply text-sm font-medium text-red-700;
   }
 
   .btn-primary-institutional {
-    @apply rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-[#183d5f];
+    @apply rounded-md bg-primary px-4 py-2.5 text-base font-medium text-primary-foreground shadow-sm hover:bg-[#183d5f];
   }
 
   .btn-secondary-institutional {
-    @apply rounded-md border border-border bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-[#e5e7eb];
+    @apply rounded-md border border-border bg-secondary px-4 py-2.5 text-base font-medium text-secondary-foreground hover:bg-[#e5e7eb];
   }
 
   .status-badge {
-    @apply inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium;
+    @apply inline-flex items-center rounded-md border px-2.5 py-1 text-sm font-medium;
   }
 
   .status-pending {

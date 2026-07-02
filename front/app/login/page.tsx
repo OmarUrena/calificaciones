@@ -38,11 +38,11 @@ export default function LoginPage() {
 
         <form className="space-y-4" onSubmit={handleSubmit}>
           <label className="block">
-            <span className="mb-1 block text-sm font-medium text-institutional-gray-dark">
+            <span className="mb-1.5 block text-base font-medium text-institutional-gray-dark">
               Correo
             </span>
             <input
-              className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              className="h-11 w-full rounded-md border border-input bg-white px-3 text-base outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
               type="email"
               autoComplete="email"
               value={email}
@@ -52,11 +52,11 @@ export default function LoginPage() {
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-sm font-medium text-institutional-gray-dark">
+            <span className="mb-1.5 block text-base font-medium text-institutional-gray-dark">
               Contraseña
             </span>
             <input
-              className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              className="h-11 w-full rounded-md border border-input bg-white px-3 text-base outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
               type="password"
               autoComplete="current-password"
               value={password}
@@ -65,7 +65,7 @@ export default function LoginPage() {
             />
           </label>
 
-          <Button className="h-10 w-full" disabled={isLoggingIn} type="submit">
+          <Button className="h-11 w-full" disabled={isLoggingIn} type="submit">
             {isLoggingIn ? (
               <>
                 <Loader2 className="animate-spin" aria-hidden="true" />

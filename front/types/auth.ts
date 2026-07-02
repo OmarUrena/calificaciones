@@ -5,6 +5,7 @@ export type CurrentUser = {
   email: string;
   fullName: string;
   role: UserRole;
+  isActive?: boolean;
   schoolId?: string | null;
   teacherId?: string | null;
   school?: {
@@ -23,10 +24,6 @@ export type LoginCredentials = {
 };
 
 export type LoginResponse = {
-  accessToken?: string;
-  token?: string;
-  user?: CurrentUser;
-  session?: {
-    access_token?: string;
-  };
+  accessToken: string;
+  user: CurrentUser;
 };

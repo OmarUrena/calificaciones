@@ -42,6 +42,13 @@ export class AuthService {
       throw new UnauthorizedException('User is not active or does not exist.');
     }
 
+    const activeSchoolYear = user.schoolId
+      ? await this.prisma.schoolYear.findFirst({
+          where: { schoolId: user.schoolId, isActive: true },
+          select: { id: true, name: true },
+        })
+      : null;
+
     return {
       id: user.id,
       schoolId: user.schoolId,
@@ -50,6 +57,8 @@ export class AuthService {
       fullName: user.fullName,
       role: user.role,
       isActive: user.isActive,
+      school: user.school,
+      activeSchoolYear,
     };
   }
 
@@ -84,6 +93,14 @@ export class AuthService {
     return this.prisma.user.findFirst({
       where: {
         OR: [...(authUser.id ? [{ id: authUser.id }] : []), ...(email ? [{ email }] : [])],
+      },
+      include: {
+        school: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
       },
     });
   }
