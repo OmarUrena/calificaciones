@@ -24,6 +24,11 @@
 - Fase 11: creada pantalla `/teachers` con TanStack Table, usuario vinculado, cursos titulares y acciones.
 - Fase 12: creada base de asignaturas con tipo `Subject`, hook `useSubjects`, `SubjectForm` y ruta `/subjects`.
 - Fase 12: tabla con TanStack Table, tipo academica/tecnica, estado activa/inactiva y enlace a RA tecnicos.
+- Fase 13: creada configuracion de RA tecnicos en `/subjects/[id]/technical-outcomes`.
+- Fase 13: RA tecnicos incluyen codigo, nombre, orden, peso, minimo 70%, estado y total de pesos.
+- Fase 14: creada base de asignaciones docentes en `/assignments`.
+- Fase 14: asignaciones relacionan ano escolar, curso, asignatura y maestro, con estado activo/inactivo.
+- Fase 14: se agrego validacion visual para evitar repetir curso + asignatura + ano escolar activos.
 
 ## Backend tocado
 - `/auth/me` devuelve `school` y `activeSchoolYear` para mostrar nombre de escuela y ano activo en topbar.
@@ -32,14 +37,18 @@
 
 ## Componentes, hooks y tipos
 - Layout: `DashboardLayout`, `AppSidebar`, `Topbar`, `RoleBasedNav`.
-- Forms: `SchoolForm`, `SchoolYearForm`, `CourseForm`, `StudentForm`, `TeacherForm`, `SubjectForm`.
-- Hooks: auth/current user, schools, school-years, courses, teachers, users, students, subjects y dashboard-stats.
-- Types: `auth`, `api`, `school`, `school-year`, `course`, `teacher`, `user`, `student`, `subject`.
+- Forms: `SchoolForm`, `SchoolYearForm`, `CourseForm`, `StudentForm`, `TeacherForm`, `SubjectForm`, `TechnicalLearningOutcomeForm`, `AssignmentForm`.
+- Hooks: auth/current user, schools, school-years, courses, teachers, users, students, subjects, RA tecnicos, asignaciones y dashboard-stats.
+- Types: `auth`, `api`, `school`, `school-year`, `course`, `teacher`, `user`, `student`, `subject`, `technical-learning-outcome`, `assignment`.
 
 ## Correcciones importantes
 - Se corrigio el freeze en `/students` al filtrar por curso usando datos derivados memoizados.
 - En `/teachers` se usaron arrays/mapas estables para evitar el mismo problema con TanStack Table.
 - En `/subjects` se usa array vacio estable para TanStack Table.
+- En RA tecnicos se muestra alerta si la suma de pesos activos no da 100.
+- En `TechnicalLearningOutcomeForm` se usan numeros explicitos con `valueAsNumber` para evitar errores de tipado.
+- En `/assignments` se puede filtrar por `teacherId` desde los enlaces de maestros.
+- En `AssignmentForm` se usa `useWatch` para evitar warning de React Hook Form en lint.
 - El topbar muestra nombre de escuela, no ID.
 - Los formularios fueron estilizados con inputs estandar en lugar de controles por defecto.
 
@@ -47,9 +56,11 @@
 - `npm run lint` y `npm run build` han pasado varias veces en `front/`.
 - `npm run build` paso en `back/` despues de los cambios de auth.
 - `npm run lint` y `npm run build` pasan en `front/` despues de fases 11 y 12.
+- `npm run lint` y `npm run build` pasan en `front/` despues de fase 13.
+- `npm run lint` y `npm run build` pasan en `front/` despues de fase 14.
 
 ## Pendientes y riesgos
-- Falta prueba manual de CRUD para maestros y asignaturas contra backend real.
+- Falta prueba manual de CRUD para maestros, asignaturas, RA tecnicos y asignaciones contra backend real.
 - Los IDs del seed actual no pasan `@IsUUID()` estricto; afecta recursos que envian IDs seed.
 - En estudiantes y maestros, eliminar usa `DELETE`; no existe desactivacion todavia.
-- Falta fase 13 en adelante: RA tecnicos, asignaciones, mis asignaturas, calificaciones, importaciones, boletines y settings.
+- Falta fase 15 en adelante: mis asignaturas, calificaciones, importaciones, boletines y settings.
