@@ -25,12 +25,19 @@ export async function login(credentials: LoginCredentials) {
   setStoredToken(token);
   setAuthCookie(token);
 
-  const user = await getCurrentUser();
+  try {
+    const user = await getCurrentUser();
 
-  return {
-    accessToken: token,
-    user,
-  };
+    return {
+      accessToken: token,
+      user,
+    };
+  } catch (error) {
+    clearStoredToken();
+    clearAuthCookie();
+    void supabase.auth.signOut();
+    throw error;
+  }
 }
 
 export async function getCurrentUser() {

@@ -29,6 +29,8 @@
 - Fase 14: creada base de asignaciones docentes en `/assignments`.
 - Fase 14: asignaciones relacionan ano escolar, curso, asignatura y maestro, con estado activo/inactivo.
 - Fase 14: se agrego validacion visual para evitar repetir curso + asignatura + ano escolar activos.
+- Fase 15: creada vista `/my-subjects` para docentes con asignaciones activas del ano escolar actual.
+- Fase 15: agregados accesos a registro e importacion de notas segun asignatura academica o tecnica.
 
 ## Backend tocado
 - `/auth/me` devuelve `school` y `activeSchoolYear` para mostrar nombre de escuela y ano activo en topbar.
@@ -42,6 +44,8 @@
 - Types: `auth`, `api`, `school`, `school-year`, `course`, `teacher`, `user`, `student`, `subject`, `technical-learning-outcome`, `assignment`.
 
 ## Correcciones importantes
+- La autenticacion rechaza usuarios ADMIN y TEACHER vinculados a una escuela inactiva.
+- Un login rechazado por el backend limpia el token y la cookie creados por Supabase.
 - Se corrigio el freeze en `/students` al filtrar por curso usando datos derivados memoizados.
 - En `/teachers` se usaron arrays/mapas estables para evitar el mismo problema con TanStack Table.
 - En `/subjects` se usa array vacio estable para TanStack Table.
@@ -63,4 +67,4 @@
 - Falta prueba manual de CRUD para maestros, asignaturas, RA tecnicos y asignaciones contra backend real.
 - Los IDs del seed actual no pasan `@IsUUID()` estricto; afecta recursos que envian IDs seed.
 - En estudiantes y maestros, eliminar usa `DELETE`; no existe desactivacion todavia.
-- Falta fase 15 en adelante: mis asignaturas, calificaciones, importaciones, boletines y settings.
+- Falta fase 16 en adelante: calificaciones, importaciones, boletines y settings.

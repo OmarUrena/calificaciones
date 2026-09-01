@@ -1,5 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { UserRole } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from '../common/types/authenticated-user.type';
@@ -42,6 +43,10 @@ export class AuthService {
       throw new UnauthorizedException('User is not active or does not exist.');
     }
 
+    if (user.role !== UserRole.SUPER_ADMIN && user.schoolId && !user.school?.isActive) {
+      throw new UnauthorizedException('La escuela vinculada a este usuario está inactiva.');
+    }
+
     const activeSchoolYear = user.schoolId
       ? await this.prisma.schoolYear.findFirst({
           where: { schoolId: user.schoolId, isActive: true },
@@ -57,7 +62,12 @@ export class AuthService {
       fullName: user.fullName,
       role: user.role,
       isActive: user.isActive,
-      school: user.school,
+      school: user.school
+        ? {
+            id: user.school.id,
+            name: user.school.name,
+          }
+        : null,
       activeSchoolYear,
     };
   }
@@ -99,6 +109,7 @@ export class AuthService {
           select: {
             id: true,
             name: true,
+            isActive: true,
           },
         },
       },
