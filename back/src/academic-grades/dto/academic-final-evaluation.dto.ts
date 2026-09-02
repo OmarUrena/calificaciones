@@ -11,17 +11,17 @@ export class AcademicFinalEvaluationDto {
   @IsInt()
   @Min(0)
   @Max(100)
-  cec?: number;
+  cec?: number | null;
 
   @IsOptional()
   @IsInt()
   @Min(0)
   @Max(100)
-  ceex?: number;
+  ceex?: number | null;
 
   @IsOptional()
   @IsInt()
   @Min(0)
   @Max(100)
-  ce?: number;
+  ce?: number | null;
 }

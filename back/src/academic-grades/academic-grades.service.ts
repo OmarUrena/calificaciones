@@ -49,6 +49,56 @@ export class AcademicGradesService {
     private readonly auditService: AuditService,
   ) {}
 
+  async findRegister(courseId: string, subjectId: string, user: AuthenticatedUser) {
+    const course = await this.prisma.course.findUnique({ where: { id: courseId } });
+
+    if (!course) {
+      throw new NotFoundException('Course not found.');
+    }
+
+    await this.validateAcademicSubjectForCourse(
+      {
+        schoolId: course.schoolId,
+        schoolYearId: course.schoolYearId,
+        courseId,
+        subjectId,
+      },
+      user,
+    );
+
+    const [subject, students, grades, results] = await Promise.all([
+      this.prisma.subject.findUnique({ where: { id: subjectId } }),
+      this.prisma.student.findMany({
+        where: {
+          schoolId: course.schoolId,
+          schoolYearId: course.schoolYearId,
+          courseId,
+        },
+        orderBy: { listNumber: 'asc' },
+      }),
+      this.prisma.academicGrade.findMany({
+        where: {
+          schoolId: course.schoolId,
+          schoolYearId: course.schoolYearId,
+          courseId,
+          subjectId,
+        },
+        orderBy: [{ student: { listNumber: 'asc' } }, { blockNumber: 'asc' }],
+      }),
+      this.prisma.academicSubjectResult.findMany({
+        where: {
+          schoolId: course.schoolId,
+          schoolYearId: course.schoolYearId,
+          courseId,
+          subjectId,
+        },
+        orderBy: { student: { listNumber: 'asc' } },
+      }),
+    ]);
+
+    return { course, subject, students, grades, results };
+  }
+
   async findByCourseAndSubject(courseId: string, subjectId: string, user: AuthenticatedUser) {
     const course = await this.prisma.course.findUnique({ where: { id: courseId } });
 
@@ -178,15 +228,18 @@ export class AcademicGradesService {
       throw new BadRequestException('Cannot register final evaluations before CF is available.');
     }
 
-    if (dto.ce !== undefined && cf + dto.ce > 100) {
+    if (dto.ce !== undefined && dto.ce !== null && cf + dto.ce > 100) {
       throw new BadRequestException('CF + CE cannot be greater than 100.');
     }
 
+    const cec = dto.cec !== undefined ? dto.cec : current.cec;
+    const ceex = dto.ceex !== undefined ? dto.ceex : current.ceex;
+    const ce = dto.ce !== undefined ? dto.ce : current.ce;
     const computed = this.computeSubjectResult({
       cf,
-      cec: dto.cec ?? current.cec,
-      ceex: dto.ceex ?? current.ceex,
-      ce: dto.ce ?? current.ce,
+      cec,
+      ceex,
+      ce,
     });
 
     const oldValue = current;
@@ -200,9 +253,9 @@ export class AcademicGradesService {
         },
       },
       data: {
-        cec: dto.cec ?? current.cec,
-        ceex: dto.ceex ?? current.ceex,
-        ce: dto.ce ?? current.ce,
+        cec,
+        ceex,
+        ce,
         ccf: computed.ccf,
         cexf: computed.cexf,
         cef: computed.cef,
@@ -552,14 +605,14 @@ export class AcademicGradesService {
     dto: UpdateAcademicGradeDto,
   ): AcademicScoreFields {
     return {
-      p1: dto.p1 ?? this.toNumber(current.p1),
-      rp1: dto.rp1 ?? this.toNumber(current.rp1),
-      p2: dto.p2 ?? this.toNumber(current.p2),
-      rp2: dto.rp2 ?? this.toNumber(current.rp2),
-      p3: dto.p3 ?? this.toNumber(current.p3),
-      rp3: dto.rp3 ?? this.toNumber(current.rp3),
-      p4: dto.p4 ?? this.toNumber(current.p4),
-      rp4: dto.rp4 ?? this.toNumber(current.rp4),
+      p1: dto.p1 !== undefined ? dto.p1 : this.toNumber(current.p1),
+      rp1: dto.rp1 !== undefined ? dto.rp1 : this.toNumber(current.rp1),
+      p2: dto.p2 !== undefined ? dto.p2 : this.toNumber(current.p2),
+      rp2: dto.rp2 !== undefined ? dto.rp2 : this.toNumber(current.rp2),
+      p3: dto.p3 !== undefined ? dto.p3 : this.toNumber(current.p3),
+      rp3: dto.rp3 !== undefined ? dto.rp3 : this.toNumber(current.rp3),
+      p4: dto.p4 !== undefined ? dto.p4 : this.toNumber(current.p4),
+      rp4: dto.rp4 !== undefined ? dto.rp4 : this.toNumber(current.rp4),
     };
   }
 

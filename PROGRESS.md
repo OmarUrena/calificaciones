@@ -31,17 +31,23 @@
 - Fase 14: se agrego validacion visual para evitar repetir curso + asignatura + ano escolar activos.
 - Fase 15: creada vista `/my-subjects` para docentes con asignaciones activas del ano escolar actual.
 - Fase 15: agregados accesos a registro e importacion de notas segun asignatura academica o tecnica.
+- Fase 16: creada pantalla `/grades/academic` con filtros por curso/asignatura y tabs para cuatro bloques y resumen.
+- Fase 16: implementada edicion inline de P1-RP4, validaciones de recuperacion, vista previa de PC y guardado por bloque.
+- Fase 16: implementado resumen PC1-PC4, CF, CEC, CCF, CEEX, CEXF, CE, CEF y estados academicos.
 
 ## Backend tocado
 - `/auth/me` devuelve `school` y `activeSchoolYear` para mostrar nombre de escuela y ano activo en topbar.
 - Se mantuvo `CreateSchoolYearDto.schoolId` con `@IsUUID()` tras revertir cambios temporales.
 - `NEXT_PUBLIC_API_URL` quedo apuntando a `/api` por el prefijo global NestJS.
+- Se agrego `GET /academic-grades/course/:courseId/subject/:subjectId/register` para entregar de forma autorizada estudiantes, notas y resultados al registro academico.
+- La actualizacion academica admite limpiar notas y evaluaciones finales con `null` y recalcula usando el valor actualizado.
 
 ## Componentes, hooks y tipos
 - Layout: `DashboardLayout`, `AppSidebar`, `Topbar`, `RoleBasedNav`.
 - Forms: `SchoolForm`, `SchoolYearForm`, `CourseForm`, `StudentForm`, `TeacherForm`, `SubjectForm`, `TechnicalLearningOutcomeForm`, `AssignmentForm`.
-- Hooks: auth/current user, schools, school-years, courses, teachers, users, students, subjects, RA tecnicos, asignaciones y dashboard-stats.
-- Types: `auth`, `api`, `school`, `school-year`, `course`, `teacher`, `user`, `student`, `subject`, `technical-learning-outcome`, `assignment`.
+- Grades: `AcademicGradeEditor`, `AcademicGradeTable`, `AcademicBlockTabs`, `AcademicSummaryTable` y `GradeStatusBadge`.
+- Hooks: auth/current user, schools, school-years, courses, teachers, users, students, subjects, RA tecnicos, asignaciones, calificaciones academicas y dashboard-stats.
+- Types: `auth`, `api`, `school`, `school-year`, `course`, `teacher`, `user`, `student`, `subject`, `technical-learning-outcome`, `assignment` y `grades`.
 
 ## Correcciones importantes
 - La autenticacion rechaza usuarios ADMIN y TEACHER vinculados a una escuela inactiva.
@@ -62,9 +68,10 @@
 - `npm run lint` y `npm run build` pasan en `front/` despues de fases 11 y 12.
 - `npm run lint` y `npm run build` pasan en `front/` despues de fase 13.
 - `npm run lint` y `npm run build` pasan en `front/` despues de fase 14.
+- `npm run lint`, `tsc --noEmit`, build de frontend y build de backend pasan despues de fase 16.
 
 ## Pendientes y riesgos
 - Falta prueba manual de CRUD para maestros, asignaturas, RA tecnicos y asignaciones contra backend real.
 - Los IDs del seed actual no pasan `@IsUUID()` estricto; afecta recursos que envian IDs seed.
 - En estudiantes y maestros, eliminar usa `DELETE`; no existe desactivacion todavia.
-- Falta fase 16 en adelante: calificaciones, importaciones, boletines y settings.
+- Falta fase 17 en adelante: calificaciones tecnicas, importaciones, boletines y settings.

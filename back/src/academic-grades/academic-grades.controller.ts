@@ -14,6 +14,16 @@ import { UpdateAcademicGradeDto } from './dto/update-academic-grade.dto';
 export class AcademicGradesController {
   constructor(private readonly academicGradesService: AcademicGradesService) {}
 
+  @Get('course/:courseId/subject/:subjectId/register')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TEACHER)
+  findRegister(
+    @Param('courseId') courseId: string,
+    @Param('subjectId') subjectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.academicGradesService.findRegister(courseId, subjectId, user);
+  }
+
   @Get('course/:courseId/subject/:subjectId')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TEACHER)
   findByCourseAndSubject(
