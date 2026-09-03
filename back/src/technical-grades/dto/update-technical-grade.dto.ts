@@ -4,20 +4,20 @@ export class UpdateTechnicalGradeDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
-  ordinaryScore?: number;
+  ordinaryScore?: number | null;
 
   @IsOptional()
   @IsNumber()
   @Min(0)
-  recovery1Score?: number;
+  recovery1Score?: number | null;
 
   @IsOptional()
   @IsNumber()
   @Min(0)
-  recovery2Score?: number;
+  recovery2Score?: number | null;
 
   @IsOptional()
   @IsNumber()
   @Min(0)
-  specialScore?: number;
+  specialScore?: number | null;
 }

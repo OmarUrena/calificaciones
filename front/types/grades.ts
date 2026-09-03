@@ -1,6 +1,7 @@
 import type { Course } from "@/types/course";
 import type { Student } from "@/types/student";
 import type { Subject } from "@/types/subject";
+import type { TechnicalLearningOutcome } from "@/types/technical-learning-outcome";
 
 export type SubjectStatus =
   | "PENDING"
@@ -104,4 +105,70 @@ export type AcademicFinalEvaluationSaveRow = AcademicFinalEvaluationValues & {
 export type AcademicGradeMutationResult = {
   grade: AcademicGrade;
   result: AcademicSubjectResult;
+};
+
+export const TECHNICAL_SCORE_FIELDS = [
+  "ordinaryScore",
+  "recovery1Score",
+  "recovery2Score",
+  "specialScore",
+] as const;
+
+export type TechnicalScoreField = (typeof TECHNICAL_SCORE_FIELDS)[number];
+export type TechnicalScoreValues = Record<TechnicalScoreField, number | null>;
+
+export type TechnicalGrade = {
+  id: string;
+  schoolId: string;
+  schoolYearId: string;
+  courseId: string;
+  studentId: string;
+  subjectId: string;
+  learningOutcomeId: string;
+  ordinaryScore: ApiNumericValue;
+  recovery1Score: ApiNumericValue;
+  recovery2Score: ApiNumericValue;
+  specialScore: ApiNumericValue;
+  validScore: ApiNumericValue;
+};
+
+export type TechnicalSubjectResult = {
+  id: string;
+  schoolId: string;
+  schoolYearId: string;
+  courseId: string;
+  studentId: string;
+  subjectId: string;
+  totalScore: ApiNumericValue;
+  finalScore: number | null;
+  status: SubjectStatus;
+};
+
+export type TechnicalRegister = {
+  course: Course;
+  subject: Subject;
+  students: Student[];
+  learningOutcomes: TechnicalLearningOutcome[];
+  grades: TechnicalGrade[];
+  results: TechnicalSubjectResult[];
+};
+
+export type TechnicalGradeSaveRow = {
+  gradeId?: string;
+  studentId: string;
+  scores: TechnicalScoreValues;
+};
+
+export type TechnicalGradeSavePayload = {
+  schoolId: string;
+  schoolYearId: string;
+  courseId: string;
+  subjectId: string;
+  learningOutcomeId: string;
+  rows: TechnicalGradeSaveRow[];
+};
+
+export type TechnicalGradeMutationResult = {
+  grade: TechnicalGrade;
+  result: TechnicalSubjectResult;
 };

@@ -1,6 +1,6 @@
 # PROGRESS.md
 
-# Avance del 2026-07-01
+# Avance del 2026-09-03
 
 ## Contexto
 - Base del trabajo: `front/FRONTEND_CONTEXT.md`, `front/FRONTEND_PLAN.md` y `back/PROJECT_CONTEXT.md`.
@@ -34,6 +34,10 @@
 - Fase 16: creada pantalla `/grades/academic` con filtros por curso/asignatura y tabs para cuatro bloques y resumen.
 - Fase 16: implementada edicion inline de P1-RP4, validaciones de recuperacion, vista previa de PC y guardado por bloque.
 - Fase 16: implementado resumen PC1-PC4, CF, CEC, CCF, CEEX, CEXF, CE, CEF y estados academicos.
+- Fase 17: creada pantalla `/grades/technical` con filtros por curso/modulo, resumen de RA y tabs dinamicos por resultado de aprendizaje.
+- Fase 17: implementada edicion inline de ordinaria, recuperacion 1, recuperacion 2 y especial, con nota valida y estado por RA.
+- Fase 17: agregado resumen tecnico por estudiante con columnas RA variables, total del modulo y estado calculado.
+- Fase 17: agregados accesos separados a calificaciones academicas y tecnicas en la navegacion de ADMIN y TEACHER.
 
 ## Backend tocado
 - `/auth/me` devuelve `school` y `activeSchoolYear` para mostrar nombre de escuela y ano activo en topbar.
@@ -41,12 +45,16 @@
 - `NEXT_PUBLIC_API_URL` quedo apuntando a `/api` por el prefijo global NestJS.
 - Se agrego `GET /academic-grades/course/:courseId/subject/:subjectId/register` para entregar de forma autorizada estudiantes, notas y resultados al registro academico.
 - La actualizacion academica admite limpiar notas y evaluaciones finales con `null` y recalcula usando el valor actualizado.
+- Se agrego `GET /technical-grades/course/:courseId/subject/:subjectId/register` con filtros de escuela, ano, curso, asignatura y permisos docentes.
+- La actualizacion tecnica admite limpiar notas con `null` y recalcula usando los valores actualizados.
+- El motor tecnico exige la secuencia ordinaria, recuperacion 1 y recuperacion 2 antes de habilitar especial en los RA no aprobados.
+- El estado tecnico permanece pendiente durante recuperaciones, pasa a especial cuando corresponde y solo queda reprobado al completar las especiales requeridas sin alcanzar 70.
 
 ## Componentes, hooks y tipos
 - Layout: `DashboardLayout`, `AppSidebar`, `Topbar`, `RoleBasedNav`.
 - Forms: `SchoolForm`, `SchoolYearForm`, `CourseForm`, `StudentForm`, `TeacherForm`, `SubjectForm`, `TechnicalLearningOutcomeForm`, `AssignmentForm`.
-- Grades: `AcademicGradeEditor`, `AcademicGradeTable`, `AcademicBlockTabs`, `AcademicSummaryTable` y `GradeStatusBadge`.
-- Hooks: auth/current user, schools, school-years, courses, teachers, users, students, subjects, RA tecnicos, asignaciones, calificaciones academicas y dashboard-stats.
+- Grades: componentes academicos existentes y `TechnicalGradeEditor`, `TechnicalGradeTable`, `TechnicalRaTabs`, `TechnicalOutcomeSummary`, `TechnicalSummaryTable` y `GradeStatusBadge`.
+- Hooks: auth/current user, schools, school-years, courses, teachers, users, students, subjects, RA tecnicos, asignaciones, calificaciones academicas, calificaciones tecnicas y dashboard-stats.
 - Types: `auth`, `api`, `school`, `school-year`, `course`, `teacher`, `user`, `student`, `subject`, `technical-learning-outcome`, `assignment` y `grades`.
 
 ## Correcciones importantes
@@ -61,6 +69,7 @@
 - En `AssignmentForm` se usa `useWatch` para evitar warning de React Hook Form en lint.
 - El topbar muestra nombre de escuela, no ID.
 - Los formularios fueron estilizados con inputs estandar en lugar de controles por defecto.
+- El editor tecnico bloquea el cambio de tab si hay filas sin guardar para evitar perder borradores o mezclar reglas de especial con datos aun no persistidos.
 
 ## Verificacion
 - `npm run lint` y `npm run build` han pasado varias veces en `front/`.
@@ -69,9 +78,12 @@
 - `npm run lint` y `npm run build` pasan en `front/` despues de fase 13.
 - `npm run lint` y `npm run build` pasan en `front/` despues de fase 14.
 - `npm run lint`, `tsc --noEmit`, build de frontend y build de backend pasan despues de fase 16.
+- `npm run lint`, `tsc --noEmit` y `npm run build` pasan en `front/` despues de fase 17.
+- El lint especifico y `npm run build` pasan en `back/` despues de los ajustes tecnicos de fase 17.
 
 ## Pendientes y riesgos
 - Falta prueba manual de CRUD para maestros, asignaturas, RA tecnicos y asignaciones contra backend real.
 - Los IDs del seed actual no pasan `@IsUUID()` estricto; afecta recursos que envian IDs seed.
 - En estudiantes y maestros, eliminar usa `DELETE`; no existe desactivacion todavia.
-- Falta fase 17 en adelante: calificaciones tecnicas, importaciones, boletines y settings.
+- Falta prueba manual del registro tecnico de fase 17 contra el backend en ejecucion.
+- Falta fase 18 en adelante: importaciones, boletines y settings.

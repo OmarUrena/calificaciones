@@ -36,14 +36,16 @@ const NAV_BY_ROLE: Record<UserRole, NavItem[]> = {
     { href: "/teachers", label: "Maestros", icon: UserRound },
     { href: "/subjects", label: "Asignaturas", icon: BookOpen },
     { href: "/assignments", label: "Asignaciones docentes", icon: ClipboardList },
-    { href: "/grades/academic", label: "Calificaciones", icon: ClipboardList },
+    { href: "/grades/academic", label: "Calificaciones académicas", icon: GraduationCap },
+    { href: "/grades/technical", label: "Calificaciones técnicas", icon: ClipboardList },
     { href: "/imports", label: "Importaciones", icon: Import },
     { href: "/reports", label: "Boletines", icon: FileDown },
     { href: "/settings", label: "Configuración", icon: Settings },
   ],
   TEACHER: [
     { href: "/my-subjects", label: "Mis asignaturas", icon: BookOpen },
-    { href: "/grades/academic", label: "Calificaciones", icon: ClipboardList },
+    { href: "/grades/academic", label: "Calificaciones académicas", icon: GraduationCap },
+    { href: "/grades/technical", label: "Calificaciones técnicas", icon: ClipboardList },
     { href: "/imports", label: "Importar calificaciones", icon: Import },
   ],
 };

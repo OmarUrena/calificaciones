@@ -46,6 +46,64 @@ export class TechnicalGradesService {
     private readonly auditService: AuditService,
   ) {}
 
+  async findRegister(courseId: string, subjectId: string, user: AuthenticatedUser) {
+    const course = await this.prisma.course.findUnique({ where: { id: courseId } });
+
+    if (!course) {
+      throw new NotFoundException('Course not found.');
+    }
+
+    await this.validateTechnicalSubjectForCourse(
+      {
+        schoolId: course.schoolId,
+        schoolYearId: course.schoolYearId,
+        courseId,
+        subjectId,
+      },
+      user,
+    );
+
+    const [subject, students, learningOutcomes, grades, results] = await Promise.all([
+      this.prisma.subject.findUnique({ where: { id: subjectId } }),
+      this.prisma.student.findMany({
+        where: {
+          schoolId: course.schoolId,
+          schoolYearId: course.schoolYearId,
+          courseId,
+        },
+        orderBy: { listNumber: 'asc' },
+      }),
+      this.prisma.technicalLearningOutcome.findMany({
+        where: {
+          schoolId: course.schoolId,
+          subjectId,
+          isActive: true,
+        },
+        orderBy: { order: 'asc' },
+      }),
+      this.prisma.technicalGrade.findMany({
+        where: {
+          schoolId: course.schoolId,
+          schoolYearId: course.schoolYearId,
+          courseId,
+          subjectId,
+        },
+        orderBy: [{ student: { listNumber: 'asc' } }, { learningOutcome: { order: 'asc' } }],
+      }),
+      this.prisma.technicalSubjectResult.findMany({
+        where: {
+          schoolId: course.schoolId,
+          schoolYearId: course.schoolYearId,
+          courseId,
+          subjectId,
+        },
+        orderBy: { student: { listNumber: 'asc' } },
+      }),
+    ]);
+
+    return { course, subject, students, learningOutcomes, grades, results };
+  }
+
   async findByCourseAndSubject(courseId: string, subjectId: string, user: AuthenticatedUser) {
     const course = await this.prisma.course.findUnique({ where: { id: courseId } });
 
@@ -81,7 +139,11 @@ export class TechnicalGradesService {
 
   async create(dto: CreateTechnicalGradeDto, user: AuthenticatedUser) {
     const context = await this.validateCreateContext(dto, user);
-    const learningOutcome = await this.getLearningOutcome(dto.learningOutcomeId, context.subjectId);
+    const learningOutcome = await this.getLearningOutcome(
+      dto.learningOutcomeId,
+      context.subjectId,
+      context.schoolId,
+    );
     const scores = this.toTechnicalScores(dto);
 
     await this.validateScores({
@@ -135,6 +197,7 @@ export class TechnicalGradesService {
     const learningOutcome = await this.getLearningOutcome(
       current.learningOutcomeId,
       current.subjectId,
+      current.schoolId,
     );
     const scores = this.mergeScores(current, dto);
 
@@ -289,11 +352,12 @@ export class TechnicalGradesService {
     return context;
   }
 
-  private async getLearningOutcome(learningOutcomeId: string, subjectId: string) {
+  private async getLearningOutcome(learningOutcomeId: string, subjectId: string, schoolId: string) {
     const learningOutcome = await this.prisma.technicalLearningOutcome.findFirst({
       where: {
         id: learningOutcomeId,
         subjectId,
+        schoolId,
         isActive: true,
       },
     });
@@ -337,25 +401,24 @@ export class TechnicalGradesService {
     this.validateScoreRange('recovery1Score', scores.recovery1Score, weight);
     this.validateScoreRange('recovery2Score', scores.recovery2Score, weight);
     this.validateScoreRange('specialScore', scores.specialScore, weight);
-    this.validateRecoverySequence(scores);
+    this.validateRecoverySequence(scores, weight);
 
     if (scores.specialScore === null || scores.specialScore === undefined) {
       return;
     }
 
-    const validBeforeSpecial = this.getValidScoreWithoutSpecial(scores);
-
-    if (validBeforeSpecial === null) {
-      throw new BadRequestException('Special score requires a previous RA score.');
+    if (scores.recovery2Score === null || scores.recovery2Score === undefined) {
+      throw new BadRequestException('Special score requires recovery2Score.');
     }
 
     const minimum = weight * 0.7;
+    const validBeforeSpecial = scores.recovery2Score;
 
     if (validBeforeSpecial >= minimum) {
       throw new BadRequestException('Special score only applies to non-approved RAs.');
     }
 
-    const totalBeforeSpecial = await this.calculateTotalBeforeSpecial({
+    const moduleBeforeSpecial = await this.calculateTotalBeforeSpecial({
       context,
       candidate: {
         ...context,
@@ -365,7 +428,13 @@ export class TechnicalGradesService {
       },
     });
 
-    if (totalBeforeSpecial >= 70) {
+    if (!moduleBeforeSpecial.hasAllScores) {
+      throw new BadRequestException(
+        'All non-approved learning outcomes must complete recovery2Score before special evaluation.',
+      );
+    }
+
+    if (moduleBeforeSpecial.total >= 70) {
       throw new BadRequestException(
         'Special technical evaluation only applies when module total is below 70.',
       );
@@ -386,7 +455,9 @@ export class TechnicalGradesService {
     }
   }
 
-  private validateRecoverySequence(scores: TechnicalScoreFields): void {
+  private validateRecoverySequence(scores: TechnicalScoreFields, weight: number): void {
+    const minimum = weight * 0.7;
+
     if (scores.recovery1Score !== null && scores.recovery1Score !== undefined) {
       if (scores.ordinaryScore === null || scores.ordinaryScore === undefined) {
         throw new BadRequestException('recovery1Score requires ordinaryScore.');
@@ -394,6 +465,12 @@ export class TechnicalGradesService {
 
       if (scores.recovery1Score < scores.ordinaryScore) {
         throw new BadRequestException('recovery1Score cannot be lower than ordinaryScore.');
+      }
+
+      if (scores.ordinaryScore >= minimum) {
+        throw new BadRequestException(
+          'recovery1Score only applies when ordinaryScore is below the RA minimum.',
+        );
       }
     }
 
@@ -405,29 +482,67 @@ export class TechnicalGradesService {
       if (scores.recovery2Score < scores.recovery1Score) {
         throw new BadRequestException('recovery2Score cannot be lower than recovery1Score.');
       }
+
+      if (scores.recovery1Score >= minimum) {
+        throw new BadRequestException(
+          'recovery2Score only applies when recovery1Score is below the RA minimum.',
+        );
+      }
     }
   }
 
   private async calculateTotalBeforeSpecial(params: {
     context: TechnicalContext;
     candidate: CandidateGrade;
-  }): Promise<number> {
-    const grades = await this.prisma.technicalGrade.findMany({
-      where: {
-        schoolId: params.context.schoolId,
-        schoolYearId: params.context.schoolYearId,
-        studentId: params.context.studentId,
-        subjectId: params.context.subjectId,
-        ...(params.candidate.id ? { id: { not: params.candidate.id } } : {}),
-      },
+  }): Promise<{ total: number; hasAllScores: boolean }> {
+    const [learningOutcomes, grades] = await Promise.all([
+      this.prisma.technicalLearningOutcome.findMany({
+        where: {
+          schoolId: params.context.schoolId,
+          subjectId: params.context.subjectId,
+          isActive: true,
+        },
+        select: { id: true, weight: true },
+      }),
+      this.prisma.technicalGrade.findMany({
+        where: {
+          schoolId: params.context.schoolId,
+          schoolYearId: params.context.schoolYearId,
+          courseId: params.context.courseId,
+          studentId: params.context.studentId,
+          subjectId: params.context.subjectId,
+          ...(params.candidate.id ? { id: { not: params.candidate.id } } : {}),
+        },
+      }),
+    ]);
+    const scoresByOutcome = new Map<string, TechnicalScoreFields>(
+      grades.map((grade) => [grade.learningOutcomeId, this.persistedToScores(grade)]),
+    );
+    scoresByOutcome.set(params.candidate.learningOutcomeId, params.candidate.scores);
+    const outcomeStates = learningOutcomes.map((outcome) => {
+      const scores = scoresByOutcome.get(outcome.id) ?? {};
+      const scoreBeforeSpecial = this.getValidScoreWithoutSpecial(scores);
+
+      return {
+        scores,
+        scoreBeforeSpecial,
+        minimum: this.toNumber(outcome.weight) * 0.7,
+      };
     });
 
-    const total = grades.reduce(
-      (sum, grade) => sum + (this.getValidScoreWithoutSpecial(this.persistedToScores(grade)) ?? 0),
-      0,
-    );
-
-    return total + (this.getValidScoreWithoutSpecial(params.candidate.scores) ?? 0);
+    return {
+      total: outcomeStates.reduce<number>(
+        (sum, outcome) => sum + (outcome.scoreBeforeSpecial ?? 0),
+        0,
+      ),
+      hasAllScores: outcomeStates.every(
+        (outcome) =>
+          outcome.scoreBeforeSpecial !== null &&
+          (outcome.scoreBeforeSpecial >= outcome.minimum ||
+            (outcome.scores.recovery2Score !== null &&
+              outcome.scores.recovery2Score !== undefined)),
+      ),
+    };
   }
 
   private async recalculateResult(context: TechnicalContext, userId: string) {
@@ -444,6 +559,7 @@ export class TechnicalGradesService {
       where: {
         schoolId: context.schoolId,
         schoolYearId: context.schoolYearId,
+        courseId: context.courseId,
         studentId: context.studentId,
         subjectId: context.subjectId,
       },
@@ -460,8 +576,35 @@ export class TechnicalGradesService {
       const grade = gradesByLearningOutcome.get(learningOutcome.id);
       return sum + (grade ? (this.toNullableNumber(grade.validScore) ?? 0) : 0);
     }, 0);
-    const hasSpecialScores = grades.some((grade) => grade.specialScore !== null);
-    const status = this.resolveTechnicalStatus(hasAllScores, totalScore, hasSpecialScores);
+    const isSpecialReady = learningOutcomes.every((learningOutcome) => {
+      const grade = gradesByLearningOutcome.get(learningOutcome.id);
+      if (!grade) return false;
+
+      const scores = this.persistedToScores(grade);
+      const scoreBeforeSpecial = this.getValidScoreWithoutSpecial(scores);
+      const minimum = this.toNumber(learningOutcome.weight) * 0.7;
+      return (
+        scoreBeforeSpecial !== null &&
+        (scoreBeforeSpecial >= minimum || scores.recovery2Score !== null)
+      );
+    });
+    const hasAllRequiredSpecialScores = learningOutcomes.every((learningOutcome) => {
+      const grade = gradesByLearningOutcome.get(learningOutcome.id);
+      if (!grade) return false;
+
+      const scoreBeforeSpecial = this.getValidScoreWithoutSpecial(this.persistedToScores(grade));
+      const minimum = this.toNumber(learningOutcome.weight) * 0.7;
+      return (
+        scoreBeforeSpecial !== null &&
+        (scoreBeforeSpecial >= minimum || grade.specialScore !== null)
+      );
+    });
+    const status = this.resolveTechnicalStatus(
+      hasAllScores,
+      totalScore,
+      isSpecialReady,
+      hasAllRequiredSpecialScores,
+    );
 
     return this.prisma.technicalSubjectResult.upsert({
       where: {
@@ -492,7 +635,8 @@ export class TechnicalGradesService {
   private resolveTechnicalStatus(
     hasAllScores: boolean,
     totalScore: number,
-    hasSpecialScores: boolean,
+    isSpecialReady: boolean,
+    hasAllRequiredSpecialScores: boolean,
   ): SubjectStatus {
     if (!hasAllScores) {
       return SubjectStatus.PENDING;
@@ -502,7 +646,11 @@ export class TechnicalGradesService {
       return SubjectStatus.APPROVED;
     }
 
-    return hasSpecialScores ? SubjectStatus.FAILED : SubjectStatus.SPECIAL;
+    if (!isSpecialReady) {
+      return SubjectStatus.PENDING;
+    }
+
+    return hasAllRequiredSpecialScores ? SubjectStatus.FAILED : SubjectStatus.SPECIAL;
   }
 
   private getValidScore(scores: TechnicalScoreFields): number | null {
@@ -533,10 +681,22 @@ export class TechnicalGradesService {
     dto: UpdateTechnicalGradeDto,
   ): TechnicalScoreFields {
     return {
-      ordinaryScore: dto.ordinaryScore ?? this.toNullableNumber(current.ordinaryScore),
-      recovery1Score: dto.recovery1Score ?? this.toNullableNumber(current.recovery1Score),
-      recovery2Score: dto.recovery2Score ?? this.toNullableNumber(current.recovery2Score),
-      specialScore: dto.specialScore ?? this.toNullableNumber(current.specialScore),
+      ordinaryScore:
+        dto.ordinaryScore !== undefined
+          ? dto.ordinaryScore
+          : this.toNullableNumber(current.ordinaryScore),
+      recovery1Score:
+        dto.recovery1Score !== undefined
+          ? dto.recovery1Score
+          : this.toNullableNumber(current.recovery1Score),
+      recovery2Score:
+        dto.recovery2Score !== undefined
+          ? dto.recovery2Score
+          : this.toNullableNumber(current.recovery2Score),
+      specialScore:
+        dto.specialScore !== undefined
+          ? dto.specialScore
+          : this.toNullableNumber(current.specialScore),
     };
   }
 

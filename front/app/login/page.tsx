@@ -19,6 +19,7 @@ export default function LoginPage() {
     try {
       await login({ email, password });
     } catch (error) {
+      console.log(error);
       const message =
         error instanceof ApiError ? error.message : "No se pudo iniciar sesión.";
       toast.error(message);

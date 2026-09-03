@@ -13,6 +13,16 @@ import { UpdateTechnicalGradeDto } from './dto/update-technical-grade.dto';
 export class TechnicalGradesController {
   constructor(private readonly technicalGradesService: TechnicalGradesService) {}
 
+  @Get('course/:courseId/subject/:subjectId/register')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TEACHER)
+  findRegister(
+    @Param('courseId') courseId: string,
+    @Param('subjectId') subjectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.technicalGradesService.findRegister(courseId, subjectId, user);
+  }
+
   @Get('course/:courseId/subject/:subjectId')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TEACHER)
   findByCourseAndSubject(
