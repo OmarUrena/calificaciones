@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ImportStatus, ImportType, Prisma, SubjectType, UserRole } from '@prisma/client';
 import { Workbook } from 'exceljs';
 
@@ -15,6 +20,7 @@ import { TechnicalGradesService } from '../technical-grades/technical-grades.ser
 import { ImportGradesDto } from './dto/import-grades.dto';
 import { ImportStudentsDto } from './dto/import-students.dto';
 import { UploadedExcelFile } from './types/uploaded-excel-file.type';
+import { ImportTemplateDto } from './dto/import-template.dto';
 
 type ImportRow = Record<string, string | number | null>;
 
@@ -22,6 +28,7 @@ type ImportContext = {
   schoolId: string;
   schoolYearId: string;
   courseId?: string;
+  subjectId?: string;
 };
 
 type ImportSummary = {
@@ -48,7 +55,9 @@ export class ImportsService {
     dto: ImportStudentsDto,
     user: AuthenticatedUser,
   ): Promise<ImportSummary> {
-    const context = await this.resolveSchoolYearContext(dto.schoolYearId, user);
+    const context = dto.courseId
+      ? await this.resolveCourseContext(dto.schoolYearId, dto.courseId, user)
+      : await this.resolveSchoolYearContext(dto.schoolYearId, user);
     const rows = await this.readRows(file);
     const job = await this.createJob({
       type: ImportType.STUDENTS,
@@ -78,6 +87,10 @@ export class ImportsService {
     user: AuthenticatedUser,
   ): Promise<ImportSummary> {
     const context = await this.resolveCourseContext(dto.schoolYearId, dto.courseId, user);
+    if (dto.subjectId) {
+      await this.resolveSelectedSubject(context, dto.subjectId, SubjectType.ACADEMIC, user);
+      context.subjectId = dto.subjectId;
+    }
     const rows = await this.readRows(file);
     const job = await this.createJob({
       type: ImportType.ACADEMIC_GRADES,
@@ -107,6 +120,10 @@ export class ImportsService {
     user: AuthenticatedUser,
   ): Promise<ImportSummary> {
     const context = await this.resolveCourseContext(dto.schoolYearId, dto.courseId, user);
+    if (dto.subjectId) {
+      await this.resolveSelectedSubject(context, dto.subjectId, SubjectType.TECHNICAL, user);
+      context.subjectId = dto.subjectId;
+    }
     const rows = await this.readRows(file);
     const job = await this.createJob({
       type: ImportType.TECHNICAL_GRADES,
@@ -173,6 +190,7 @@ export class ImportsService {
         schoolId: context.schoolId,
         schoolYearId: context.schoolYearId,
         OR: [{ id: courseValue }, { name: courseValue }],
+        ...(context.courseId ? { id: context.courseId } : {}),
       },
       select: { id: true },
     });
@@ -206,6 +224,7 @@ export class ImportsService {
   ): Promise<void> {
     const student = await this.findStudentByListNumber(row, context);
     const subject = await this.findSubjectByName(row, context.schoolId, SubjectType.ACADEMIC);
+    this.ensureSelectedSubject(context, subject.id);
     let importedBlocks = 0;
 
     for (const blockNumber of [1, 2, 3, 4]) {
@@ -281,6 +300,7 @@ export class ImportsService {
       SubjectType.TECHNICAL,
       'modulo',
     );
+    this.ensureSelectedSubject(context, subject.id);
     const learningOutcomes = await this.prisma.technicalLearningOutcome.findMany({
       where: { schoolId: context.schoolId, subjectId: subject.id, isActive: true },
       orderBy: { order: 'asc' },
@@ -361,7 +381,13 @@ export class ImportsService {
 
     const workbook = new Workbook();
     const workbookBuffer = file.buffer as unknown as Parameters<typeof workbook.xlsx.load>[0];
-    await workbook.xlsx.load(workbookBuffer);
+    try {
+      await workbook.xlsx.load(workbookBuffer);
+    } catch {
+      throw new BadRequestException(
+        'No se pudo leer el Excel. Guarda el archivo en formato .xlsx.',
+      );
+    }
 
     const worksheet = workbook.worksheets[0];
 
@@ -404,6 +430,9 @@ export class ImportsService {
       }
     });
 
+    if (!rows.length) {
+      throw new BadRequestException('El archivo no contiene filas para importar.');
+    }
     return rows;
   }
 
@@ -412,8 +441,8 @@ export class ImportsService {
       throw new BadRequestException('Excel file is required in the file field.');
     }
 
-    if (!file.originalname.match(/\.(xlsx|xlsm|xls)$/i)) {
-      throw new BadRequestException('Only Excel files are supported.');
+    if (!file.originalname.match(/\.(xlsx|xlsm)$/i)) {
+      throw new BadRequestException('Usa un archivo Excel .xlsx o .xlsm.');
     }
   }
 
@@ -439,7 +468,7 @@ export class ImportsService {
     schoolYearId: string,
     courseId: string,
     user: AuthenticatedUser,
-  ): Promise<Required<ImportContext>> {
+  ): Promise<ImportContext & { courseId: string }> {
     const course = await this.prisma.course.findFirst({
       where: { id: courseId, schoolYearId },
     });
@@ -455,6 +484,126 @@ export class ImportsService {
       schoolYearId,
       courseId,
     };
+  }
+
+  private ensureSelectedSubject(context: ImportContext, subjectId: string) {
+    if (context.subjectId && context.subjectId !== subjectId) {
+      throw new BadRequestException('La asignatura de la fila no coincide con la seleccionada.');
+    }
+  }
+
+  private async resolveSelectedSubject(
+    context: ImportContext,
+    subjectId: string,
+    type: SubjectType,
+    user: AuthenticatedUser,
+  ) {
+    const assignment = await this.prisma.teacherAssignment.findFirst({
+      where: {
+        schoolId: context.schoolId,
+        schoolYearId: context.schoolYearId,
+        courseId: context.courseId,
+        subjectId,
+        isActive: true,
+        subject: { type, isActive: true },
+      },
+      include: { subject: true },
+    });
+    if (!assignment || !context.courseId) {
+      throw new BadRequestException(
+        'La asignatura no está activa y asignada al curso seleccionado.',
+      );
+    }
+    await this.permissionsService.ensureTeacherCanManageSubject({
+      user,
+      schoolId: context.schoolId,
+      schoolYearId: context.schoolYearId,
+      courseId: context.courseId,
+      subjectId,
+    });
+    return assignment.subject;
+  }
+
+  async generateTemplate(dto: ImportTemplateDto, user: AuthenticatedUser): Promise<Buffer> {
+    if (dto.type === 'students' && user.role === UserRole.TEACHER) {
+      throw new ForbiddenException('Solo administración puede importar estudiantes.');
+    }
+    const context = await this.resolveCourseContext(dto.schoolYearId, dto.courseId, user);
+    const workbook = new Workbook();
+    const sheet = workbook.addWorksheet('Datos');
+    let headers: string[];
+    let subjectName = '';
+    if (dto.type === 'students') {
+      headers = ['numero_lista', 'nombres', 'apellidos', 'curso'];
+    } else {
+      if (!dto.subjectId) throw new BadRequestException('Selecciona una asignatura.');
+      const subject = await this.resolveSelectedSubject(
+        context,
+        dto.subjectId,
+        dto.type === 'academic' ? SubjectType.ACADEMIC : SubjectType.TECHNICAL,
+        user,
+      );
+      subjectName = subject.name;
+      if (dto.type === 'academic') {
+        headers = ['numero_lista', 'asignatura'];
+        for (const block of [1, 2, 3, 4]) {
+          for (const period of [1, 2, 3, 4]) {
+            headers.push(`B${block}_P${period}`, `B${block}_RP${period}`);
+          }
+        }
+        headers.push('CEC', 'CEEX', 'CE');
+      } else {
+        const outcomes = await this.prisma.technicalLearningOutcome.findMany({
+          where: { schoolId: context.schoolId, subjectId: dto.subjectId, isActive: true },
+          orderBy: { order: 'asc' },
+        });
+        if (!outcomes.length) throw new BadRequestException('El módulo no tiene RA activos.');
+        headers = [
+          'numero_lista',
+          'modulo',
+          ...outcomes.flatMap(({ code }) => [code, `${code}_R1`, `${code}_R2`, `${code}_ESP`]),
+        ];
+      }
+    }
+    sheet.columns = headers.map((header) => ({
+      header,
+      key: header,
+      width: header === 'asignatura' || header === 'modulo' ? 40 : 20,
+    }));
+    sheet.views = [{ state: 'frozen', ySplit: 1, xSplit: dto.type === 'students' ? 1 : 2 }];
+    sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E79' } };
+    if (dto.type !== 'students') {
+      const students = await this.prisma.student.findMany({
+        where: {
+          schoolId: context.schoolId,
+          schoolYearId: context.schoolYearId,
+          courseId: dto.courseId,
+        },
+        orderBy: { listNumber: 'asc' },
+        select: { listNumber: true },
+      });
+      students.forEach((student) => sheet.addRow([student.listNumber, subjectName]));
+    }
+    const instructions = workbook.addWorksheet('Instrucciones');
+    instructions.getColumn(1).width = 110;
+    instructions.addRows([
+      [
+        'Completa la hoja Datos sin cambiar sus encabezados. Elimina las filas que no desees importar.',
+      ],
+      [`Curso seleccionado (valor para la columna curso): ${dto.courseId}`],
+      [
+        dto.type === 'students'
+          ? 'Completa numero_lista, nombres, apellidos y curso en cada fila.'
+          : `Asignatura/módulo: ${subjectName}. No cambies este nombre.`,
+      ],
+      ['Las celdas de notas vacías conservan los valores existentes.'],
+      ['Las notas se validan con las mismas reglas del registro de calificaciones.'],
+      [
+        'Académicas: incluye al menos una nota de bloque por fila, también al cargar evaluaciones finales.',
+      ],
+    ]);
+    return Buffer.from(await workbook.xlsx.writeBuffer());
   }
 
   private async createJob(params: {

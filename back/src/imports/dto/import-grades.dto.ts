@@ -1,4 +1,4 @@
-import { IsUUID } from 'class-validator';
+import { IsOptional, IsUUID } from 'class-validator';
 
 export class ImportGradesDto {
   @IsUUID()
@@ -6,4 +6,8 @@ export class ImportGradesDto {
 
   @IsUUID()
   courseId: string;
+
+  @IsOptional()
+  @IsUUID()
+  subjectId?: string;
 }

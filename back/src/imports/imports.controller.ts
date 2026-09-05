@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  StreamableFile,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UserRole } from '@prisma/client';
 
@@ -9,10 +19,21 @@ import { ImportGradesDto } from './dto/import-grades.dto';
 import { ImportStudentsDto } from './dto/import-students.dto';
 import { UploadedExcelFile } from './types/uploaded-excel-file.type';
 import { ImportsService } from './imports.service';
+import { ImportTemplateDto } from './dto/import-template.dto';
 
 @Controller('imports')
 export class ImportsController {
   constructor(private readonly importsService: ImportsService) {}
+
+  @Get('template')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TEACHER)
+  async template(@Query() dto: ImportTemplateDto, @CurrentUser() user: AuthenticatedUser) {
+    const buffer = await this.importsService.generateTemplate(dto, user);
+    return new StreamableFile(buffer, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: `attachment; filename="plantilla-${dto.type}.xlsx"`,
+    });
+  }
 
   @Post('students')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)

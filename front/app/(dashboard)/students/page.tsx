@@ -180,7 +180,7 @@ export default function StudentsPage() {
         </div>
         {canManageStudents ? (
           <div className="flex flex-wrap gap-3">
-            <ActionLink href="/imports">
+            <ActionLink href={`/imports?type=students${selectedCourseId ? `&courseId=${selectedCourseId}` : ""}`}>
               <Upload aria-hidden="true" />
               Importar estudiantes
             </ActionLink>

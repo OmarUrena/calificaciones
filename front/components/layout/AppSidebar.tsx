@@ -7,18 +7,22 @@ import { cn } from "@/lib/utils";
 import type { CurrentUser } from "@/types/auth";
 import { getNavItems } from "./RoleBasedNav";
 
-export function AppSidebar({ user }: { user?: CurrentUser | null }) {
+export function AppSidebar({ user, mobile = false, onNavigate }: {
+  user?: CurrentUser | null;
+  mobile?: boolean;
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
   const items = getNavItems(user);
 
   return (
-    <aside className="hidden w-64 shrink-0 border-r border-border bg-white md:block">
+    <aside className={cn("shrink-0 bg-white", mobile ? "w-full" : "hidden w-64 border-r border-border md:block")}>
       <div className="border-b border-border px-5 py-5">
         <p className="text-xl font-semibold text-primary">CalifApp</p>
         <p className="text-sm text-institutional-gray">Panel administrativo</p>
       </div>
 
-      <nav className="space-y-1 px-3 py-4">
+      <nav aria-label="Navegación principal" className="space-y-1 px-3 py-4">
         {items.map((item) => {
           const isActive =
             pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -32,6 +36,8 @@ export function AppSidebar({ user }: { user?: CurrentUser | null }) {
               )}
               href={item.href}
               key={item.href}
+              aria-current={isActive ? "page" : undefined}
+              onClick={onNavigate}
             >
               <Icon className="h-5 w-5" aria-hidden="true" />
               {item.label}

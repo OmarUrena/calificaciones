@@ -1,5 +1,25 @@
 # PROGRESS.md
 
+# Avance del 2026-09-05
+
+- Corregido el entorno local que devolvia `Import job not found` al descargar plantillas: el backend del puerto 3000 seguia ejecutando una version anterior con `npm start` sin recarga. Se reinicio en modo watch y se confirmo en el arranque el registro de `GET /api/imports/template` antes de `GET /api/imports/:id`.
+- Nueva prueba HTTP de rutas: `node --test test/imports-routes.test.cjs` pasa; verifica respuesta XLSX, encabezados de descarga, validacion de parametros y que template no se interprete como ID de importacion. Prueba aislada con servicio simulado.
+- Verificada la flexibilidad de las plantillas tecnicas: columnas segun los RA activos y su orden, sin cantidad fija. Nuevas pruebas con 1, 4, 8 y 12 RA generan el XLSX, completan sus cuatro columnas por RA y lo pasan por el importador con persistencia simulada. Se comprueban cambios de configuracion entre descargas y rechazo de modulos sin RA activos. Suite de importaciones: 12 pruebas pasan.
+- Fase 18 completada: ruta `/imports` con secciones de estudiantes, notas academicas y notas tecnicas; seleccion de curso/asignatura y soporte de enlaces con filtros desde registros, Mis asignaturas y estudiantes.
+- Carga Excel con `ImportUploader`, hook `useImportFile`, validacion .xlsx/.xlsm, bloqueo de controles durante el envio e invalidacion de registros y metricas tras procesar la solicitud.
+- Resultado con estado, total de filas, filas importadas y filas con error; `ImportErrorsTable` conserva los numeros reales de fila reportados por el backend.
+- Plantillas XLSX mediante `GET /imports/template`: academica con 37 columnas, tecnica con los RA activos del modulo, y estudiantes con instrucciones. Las plantillas de notas incluyen los numeros de lista del curso.
+- Backend: campos opcionales courseId en importacion de estudiantes y subjectId en notas para validar que las filas coincidan con la seleccion. Las plantillas validan escuela, asignacion activa y permisos del docente antes de consultar estudiantes.
+- Backend: archivos vacios, corruptos o de formato incompatible devuelven errores de validacion legibles.
+- Verificacion fase 18: lint frontend, lint de archivos backend modificados y builds de ambos proyectos pasan. El build frontend incluye validacion TypeScript y requirio red para Google Fonts.
+- Pruebas: 7 casos pasan con `node --test test/imports.test.cjs` desde back/ tras compilar; cubren plantillas, permisos, seleccion, resumen parcial y archivos invalidos. `node test/imports-ui.cjs` pasa con frontend en puerto 3100: ADMIN en escritorio y TEACHER en movil, usando API simulada sin escribir en la base real.
+- Pendiente fase 18: prueba con Excel y backend/base de datos reales. Se conserva la limitacion existente de guardado parcial de filas de notas ante errores, explicada en la UI. Las evaluaciones finales academicas requieren al menos una nota de bloque por fila. Sigue pendiente el problema documentado de UUID de los datos seed.
+- Corregida la navegacion movil: boton de menu en Topbar y panel lateral modal con las mismas opciones por rol que AppSidebar.
+- El panel permite cerrar con boton, Escape, toque fuera o seleccion de enlace; se cierra al pasar a escritorio y bloquea el scroll de fondo mientras esta abierto.
+- Se mantiene la barra lateral de escritorio y se identifica el enlace activo con aria-current.
+- Verificacion: lint, TypeScript y build de frontend pasan. El build requirio acceso a red para descargar Inter desde Google Fonts.
+- Pendiente comprobar visualmente la interaccion en un movil real.
+
 # Avance del 2026-09-03
 
 ## Contexto
@@ -86,4 +106,4 @@
 - Los IDs del seed actual no pasan `@IsUUID()` estricto; afecta recursos que envian IDs seed.
 - En estudiantes y maestros, eliminar usa `DELETE`; no existe desactivacion todavia.
 - Falta prueba manual del registro tecnico de fase 17 contra el backend en ejecucion.
-- Falta fase 18 en adelante: importaciones, boletines y settings.
+- Fase 18 implementada el 2026-09-05; quedan fase 19 en adelante: boletines, settings, pulido y pruebas manuales.
