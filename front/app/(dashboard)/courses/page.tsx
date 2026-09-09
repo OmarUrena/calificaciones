@@ -118,7 +118,7 @@ export default function CoursesPage() {
                   Editar
                 </Button>
               ) : null}
-              <ActionLink href={`/courses/${course.id}/students`}>
+              <ActionLink href={`/students?courseId=${course.id}`}>
                 <UsersRound aria-hidden="true" />
                 Estudiantes
               </ActionLink>

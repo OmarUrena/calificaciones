@@ -1,5 +1,14 @@
 # PROGRESS.md
 
+# Avance del 2026-09-09
+
+- Fase 19 implementada en frontend: nueva ruta `/reports` con filtros por ano escolar, curso, periodo y estudiante opcional; permite descargar boletin individual o PDF de todo el curso, muestra estados de carga y bloquea visualmente a docentes que no sean titulares.
+- Agregado el acceso a Boletines en la navegacion de TEACHER; los enlaces desde Cursos conservan el curso seleccionado mediante `courseId`.
+- Agregados directamente a la base de datos cuatro cursos de prueba (Contabilidad, Mercadeo, Gastronomia y Logistica) y completados los seis cursos con 15 estudiantes cada uno.
+- Corregido el acceso a estudiantes desde la tabla de cursos: el enlace ya no apunta a la ruta inexistente `/courses/[id]/students`, sino a `/students?courseId=...`.
+- La pantalla de estudiantes lee `courseId` desde la URL y abre la vista con el curso correspondiente seleccionado.
+- Al crear un estudiante, el formulario propone automaticamente el siguiente numero de lista del curso seleccionado (ultimo registrado + 1), manteniendo el campo editable.
+
 # Avance del 2026-09-05
 
 - Corregido el entorno local que devolvia `Import job not found` al descargar plantillas: el backend del puerto 3000 seguia ejecutando una version anterior con `npm start` sin recarga. Se reinicio en modo watch y se confirmo en el arranque el registro de `GET /api/imports/template` antes de `GET /api/imports/:id`.

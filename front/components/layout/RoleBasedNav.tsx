@@ -47,6 +47,7 @@ const NAV_BY_ROLE: Record<UserRole, NavItem[]> = {
     { href: "/grades/academic", label: "Calificaciones académicas", icon: GraduationCap },
     { href: "/grades/technical", label: "Calificaciones técnicas", icon: ClipboardList },
     { href: "/imports", label: "Importar calificaciones", icon: Import },
+    { href: "/reports", label: "Boletines", icon: FileDown },
   ],
 };
 

@@ -8,7 +8,8 @@ import {
 } from "@tanstack/react-table";
 import { Loader2, Pencil, Plus, Upload, UsersRound } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { StudentForm } from "@/components/forms/StudentForm";
@@ -25,13 +26,24 @@ const EMPTY_STUDENTS: Student[] = [];
 const EMPTY_COURSES: Course[] = [];
 
 export default function StudentsPage() {
+  return (
+    <Suspense fallback={<StudentsPageLoading />}>
+      <StudentsPageContent />
+    </Suspense>
+  );
+}
+
+function StudentsPageContent() {
+  const searchParams = useSearchParams();
   const { data: user } = useCurrentUser();
   const { data: students = EMPTY_STUDENTS, isLoading } = useStudents();
   const { data: courses = EMPTY_COURSES } = useCourses();
   const createStudent = useCreateStudent();
   const updateStudent = useUpdateStudent();
   const deleteStudent = useDeleteStudent();
-  const [selectedCourseId, setSelectedCourseId] = useState("");
+  const [selectedCourseId, setSelectedCourseId] = useState(
+    () => searchParams.get("courseId") ?? "",
+  );
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
 
@@ -221,6 +233,7 @@ export default function StudentsPage() {
       {isFormOpen ? (
         <StudentForm
           student={editingStudent}
+          students={students}
           courses={courses}
           selectedCourseId={selectedCourseId}
           isSubmitting={createStudent.isPending || updateStudent.isPending}
@@ -278,6 +291,21 @@ export default function StudentsPage() {
             </table>
           </div>
         )}
+      </div>
+    </section>
+  );
+}
+
+function StudentsPageLoading() {
+  return (
+    <section className="space-y-6">
+      <div>
+        <h1 className="institutional-title">Estudiantes</h1>
+        <p className="institutional-subtitle">Gestiona estudiantes por curso y número de lista.</p>
+      </div>
+      <div className="admin-card flex items-center gap-2 text-base text-institutional-gray">
+        <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+        Cargando estudiantes...
       </div>
     </section>
   );

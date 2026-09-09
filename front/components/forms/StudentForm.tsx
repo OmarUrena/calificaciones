@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ const studentSchema = z.object({
 
 type StudentFormProps = {
   student?: Student | null;
+  students: Student[];
   courses: Course[];
   isSubmitting?: boolean;
   selectedCourseId?: string;
@@ -35,6 +36,7 @@ const emptyValues: StudentFormValues = {
 
 export function StudentForm({
   student,
+  students,
   courses,
   isSubmitting = false,
   selectedCourseId,
@@ -43,6 +45,8 @@ export function StudentForm({
 }: StudentFormProps) {
   const {
     register,
+    control,
+    setValue,
     reset,
     handleSubmit,
     formState: { errors },
@@ -50,6 +54,7 @@ export function StudentForm({
     resolver: zodResolver(studentSchema),
     defaultValues: emptyValues,
   });
+  const courseId = useWatch({ control, name: "courseId" });
 
   useEffect(() => {
     reset(
@@ -66,6 +71,20 @@ export function StudentForm({
           },
     );
   }, [reset, selectedCourseId, student]);
+
+  useEffect(() => {
+    if (student || !courseId) return;
+
+    const lastListNumber = students.reduce(
+      (highest, currentStudent) =>
+        currentStudent.courseId === courseId
+          ? Math.max(highest, currentStudent.listNumber)
+          : highest,
+      0,
+    );
+
+    setValue("listNumber", lastListNumber + 1, { shouldValidate: true });
+  }, [courseId, setValue, student, students]);
 
   return (
     <form
