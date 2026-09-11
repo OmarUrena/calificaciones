@@ -25,7 +25,7 @@ export default function ReportsPage() {
 
 function ReportsPageContent() {
   const searchParams = useSearchParams();
-  const { data: user } = useCurrentUser();
+  const { data: user, isLoading: loadingUser } = useCurrentUser();
   const { data: schoolYears = [], isLoading: loadingSchoolYears } = useSchoolYears();
   const { data: courses = [], isLoading: loadingCourses } = useCourses();
   const { data: students = [], isLoading: loadingStudents } = useStudents();
@@ -54,10 +54,12 @@ function ReportsPageContent() {
     [selectedCourseId, students],
   );
   const selectedCourse = courses.find((course) => course.id === selectedCourseId);
-  const canGenerate =
-    user?.role !== "TEACHER" ||
-    Boolean(user.teacherId && selectedCourse?.titularId === user.teacherId);
-  const isLoading = loadingSchoolYears || loadingCourses || loadingStudents;
+  const canGenerate = Boolean(
+    user &&
+      (user.role !== "TEACHER" ||
+        (user.teacherId && selectedCourse?.titularId === user.teacherId)),
+  );
+  const isLoading = loadingUser || loadingSchoolYears || loadingCourses || loadingStudents;
 
   function changeSchoolYear(schoolYearId: string) {
     setSelectedSchoolYearId(schoolYearId);

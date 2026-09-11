@@ -1,5 +1,10 @@
 # PROGRESS.md
 
+# Avance del 2026-09-11
+
+- Agregada prueba de interfaz de la fase 19 para boletines: valida curso y ano escolar preseleccionados, orden de estudiantes, periodo enviado al backend, nombres de las descargas PDF y permisos visuales de ADMIN y maestro titular/no titular.
+- Los controles de generacion permanecen bloqueados mientras se resuelve el usuario actual, evitando una habilitacion transitoria para docentes antes de validar que sean titulares.
+
 # Avance del 2026-09-09
 
 - Fase 19 implementada en frontend: nueva ruta `/reports` con filtros por ano escolar, curso, periodo y estudiante opcional; permite descargar boletin individual o PDF de todo el curso, muestra estados de carga y bloquea visualmente a docentes que no sean titulares.
