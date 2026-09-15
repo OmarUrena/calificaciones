@@ -1,5 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { AuditAction, Prisma, SubjectStatus, UserRole } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
+import {
+  AuditAction,
+  Prisma,
+  SubjectStatus,
+  SubjectType,
+  UserRole,
+  type Subject,
+} from '@prisma/client';
 import { chromium } from 'playwright';
 
 import { AuditService } from '../audit/audit.service';
@@ -31,12 +39,16 @@ type TechnicalGrade = Prisma.TechnicalGradeGetPayload<{
   include: { subject: true; learningOutcome: true };
 }>;
 
+type TechnicalLearningOutcome = Prisma.TechnicalLearningOutcomeGetPayload<object>;
+
 type StudentReportData = {
   student: ReportStudent;
+  assignedSubjects: Subject[];
   academicResults: AcademicResult[];
   academicGrades: AcademicGrade[];
   technicalResults: TechnicalResult[];
   technicalGrades: TechnicalGrade[];
+  technicalLearningOutcomes: TechnicalLearningOutcome[];
 };
 
 @Injectable()
@@ -45,6 +57,7 @@ export class ReportsService {
     private readonly prisma: PrismaService,
     private readonly permissionsService: PermissionsService,
     private readonly auditService: AuditService,
+    private readonly config: ConfigService,
   ) {}
 
   async generateStudentReportCard(
@@ -141,7 +154,24 @@ export class ReportsService {
       throw new NotFoundException('Student not found.');
     }
 
-    const [academicResults, academicGrades, technicalResults, technicalGrades] = await Promise.all([
+    const [
+      assignedSubjectLinks,
+      academicResults,
+      academicGrades,
+      technicalResults,
+      technicalGrades,
+      technicalLearningOutcomes,
+    ] = await Promise.all([
+      this.prisma.teacherAssignment.findMany({
+        where: {
+          schoolId: student.schoolId,
+          schoolYearId: student.schoolYearId,
+          courseId: student.courseId,
+          isActive: true,
+        },
+        select: { subject: true },
+        orderBy: { subject: { name: 'asc' } },
+      }),
       this.prisma.academicSubjectResult.findMany({
         where: {
           schoolId: student.schoolId,
@@ -182,14 +212,33 @@ export class ReportsService {
         include: { subject: true, learningOutcome: true },
         orderBy: [{ subject: { name: 'asc' } }, { learningOutcome: { order: 'asc' } }],
       }),
+      this.prisma.technicalLearningOutcome.findMany({
+        where: {
+          schoolId: student.schoolId,
+          isActive: true,
+          subject: {
+            teacherAssignments: {
+              some: {
+                schoolId: student.schoolId,
+                schoolYearId: student.schoolYearId,
+                courseId: student.courseId,
+                isActive: true,
+              },
+            },
+          },
+        },
+        orderBy: [{ subject: { displayOrder: 'asc' } }, { order: 'asc' }],
+      }),
     ]);
 
     return {
       student,
+      assignedSubjects: assignedSubjectLinks.map((assignment) => assignment.subject),
       academicResults,
       academicGrades,
       technicalResults,
       technicalGrades,
+      technicalLearningOutcomes,
     };
   }
 
@@ -228,35 +277,68 @@ export class ReportsService {
 
   private buildAcademicSection(data: StudentReportData, period: number): string {
     const gradesBySubject = this.groupBy(data.academicGrades, (grade) => grade.subjectId);
+    const subjects = this.uniqueAcademicSubjects(data);
 
-    if (!data.academicResults.length && !data.academicGrades.length) {
+    if (!subjects.length) {
       return this.emptySection(
         'Asignaturas académicas',
         'No hay calificaciones académicas registradas.',
       );
     }
 
-    const rows = this.uniqueAcademicSubjects(data).map((subject) => {
+    const detailRows = subjects.map((subject) => {
+      const grades = gradesBySubject.get(subject.id) ?? [];
+      const gradesByBlock = new Map(grades.map((grade) => [grade.blockNumber, grade]));
+      const scoreCells = Array.from({ length: 4 }, (_, blockIndex) => {
+        const grade = gradesByBlock.get(blockIndex + 1);
+        return Array.from({ length: period }, (_, periodIndex) => {
+          const scoreNumber = periodIndex + 1;
+          return `
+            <td class="numeric">${this.formatScore(grade?.[`p${scoreNumber}` as keyof AcademicGrade] as Prisma.Decimal | null | undefined)}</td>
+            <td class="numeric recovery">${this.formatScore(grade?.[`rp${scoreNumber}` as keyof AcademicGrade] as Prisma.Decimal | null | undefined)}</td>
+          `;
+        }).join('');
+      }).join('');
+
+      return `
+        <tr>
+          <td class="subject-name">${this.escapeHtml(subject.name)}</td>
+          ${scoreCells}
+        </tr>
+      `;
+    });
+
+    const summaryRows = subjects.map((subject) => {
       const grades = gradesBySubject.get(subject.id) ?? [];
       const result = data.academicResults.find((item) => item.subjectId === subject.id);
-      const periodScores = Array.from({ length: period }, (_, index) =>
-        this.formatScore(this.calculateAcademicPeriodAverage(grades, index + 1)),
-      );
+      const gradesByBlock = new Map(grades.map((grade) => [grade.blockNumber, grade]));
+      const averages = Array.from({ length: 4 }, (_, blockIndex) => {
+        const blockNumber = blockIndex + 1;
+        const grade = gradesByBlock.get(blockNumber);
+        const storedAverage = result?.[`pc${blockNumber}` as keyof AcademicResult] as
+          | Prisma.Decimal
+          | null
+          | undefined;
+        return this.formatScore(period === 4 ? (grade?.pc ?? storedAverage) : null);
+      });
       const finalCells =
         period === 4
           ? `
-            <td>${this.formatScore(result?.cf)}</td>
-            <td>${this.formatScore(result?.ccf)}</td>
-            <td>${this.formatScore(result?.cexf)}</td>
-            <td>${this.formatScore(result?.cef)}</td>
+            <td class="numeric">${this.formatScore(result?.cf)}</td>
+            <td class="numeric">${this.formatScore(result?.cec)}</td>
+            <td class="numeric">${this.formatScore(result?.ccf)}</td>
+            <td class="numeric">${this.formatScore(result?.ceex)}</td>
+            <td class="numeric">${this.formatScore(result?.cexf)}</td>
+            <td class="numeric">${this.formatScore(result?.ce)}</td>
+            <td class="numeric">${this.formatScore(result?.cef)}</td>
             <td>${this.formatStatus(result?.status)}</td>
           `
           : '';
 
       return `
         <tr>
-          <td>${this.escapeHtml(subject.name)}</td>
-          ${periodScores.map((score) => `<td>${score}</td>`).join('')}
+          <td class="subject-name">${this.escapeHtml(subject.name)}</td>
+          ${averages.map((average) => `<td class="numeric average">${average}</td>`).join('')}
           ${finalCells}
         </tr>
       `;
@@ -264,48 +346,85 @@ export class ReportsService {
 
     return `
       <h2>Asignaturas académicas</h2>
-      <table>
+      <table class="academic-detail period-${period}">
+        <colgroup><col class="subject-column" /></colgroup>
         <thead>
           <tr>
-            <th>Asignatura</th>
-            ${Array.from({ length: period }, (_, index) => `<th>P${index + 1}</th>`).join('')}
-            ${period === 4 ? '<th>CF</th><th>CCF</th><th>CEXF</th><th>CEF</th><th>Estado</th>' : ''}
+            <th rowspan="2">Asignatura académica</th>
+            ${Array.from({ length: 4 }, (_, index) => `<th colspan="${period * 2}" class="competency-heading">${this.escapeHtml(this.academicBlockTitle(index + 1))}</th>`).join('')}
+          </tr>
+          <tr>
+            ${Array.from({ length: 4 }, () => Array.from({ length: period }, (_, index) => `<th class="numeric">P${index + 1}</th><th class="numeric recovery">RP${index + 1}</th>`).join('')).join('')}
           </tr>
         </thead>
-        <tbody>${rows.join('')}</tbody>
+        <tbody>${detailRows.join('')}</tbody>
+      </table>
+
+      <h3>Promedios por bloque y resultado final</h3>
+      <table class="academic-summary">
+        <thead>
+          <tr>
+            <th>Asignatura académica</th>
+            <th class="numeric average">PC1</th><th class="numeric average">PC2</th><th class="numeric average">PC3</th><th class="numeric average">PC4</th>
+            ${period === 4 ? '<th class="numeric">CF</th><th class="numeric">CEC</th><th class="numeric">CCF</th><th class="numeric">CEEX</th><th class="numeric">CEXF</th><th class="numeric">CE</th><th class="numeric">CEF</th><th>Estado</th>' : ''}
+          </tr>
+        </thead>
+        <tbody>${summaryRows.join('')}</tbody>
       </table>
     `;
   }
 
   private buildTechnicalSection(data: StudentReportData, period: number): string {
     const gradesBySubject = this.groupBy(data.technicalGrades, (grade) => grade.subjectId);
+    const subjects = this.uniqueTechnicalSubjects(data);
 
-    if (!data.technicalResults.length && !data.technicalGrades.length) {
+    if (!subjects.length) {
       return this.emptySection('Módulos técnicos', 'No hay calificaciones técnicas registradas.');
     }
 
-    const rows = this.uniqueTechnicalSubjects(data).map((subject) => {
+    const outcomesBySubject = new Map(
+      subjects.map((subject) => [
+        subject.id,
+        this.uniqueTechnicalLearningOutcomes(data, subject.id),
+      ]),
+    );
+    const maximumOutcomeOrder = Math.max(
+      0,
+      ...Array.from(outcomesBySubject.values()).flatMap((outcomes) =>
+        outcomes.map((outcome) => outcome.order),
+      ),
+    );
+
+    const rows = subjects.map((subject) => {
       const grades = gradesBySubject.get(subject.id) ?? [];
       const result = data.technicalResults.find((item) => item.subjectId === subject.id);
-      const raCells = grades
-        .map(
-          (grade) =>
-            `${this.escapeHtml(grade.learningOutcome.code)}: ${this.formatScore(grade.validScore)}`,
-        )
-        .join('<br />');
+      const gradesByOutcome = new Map(grades.map((grade) => [grade.learningOutcomeId, grade]));
+      const outcomesByOrder = new Map(
+        (outcomesBySubject.get(subject.id) ?? []).map((outcome) => [outcome.order, outcome]),
+      );
+      const raCells = Array.from({ length: maximumOutcomeOrder }, (_, index) => {
+        const outcome = outcomesByOrder.get(index + 1);
+
+        if (!outcome) {
+          return '<td class="numeric">-</td>';
+        }
+
+        const grade = gradesByOutcome.get(outcome.id);
+        return `<td class="numeric">${this.formatScore(grade?.validScore)}/${this.formatScore(outcome.weight)}</td>`;
+      }).join('');
       const finalCells =
         period === 4
           ? `
-            <td>${this.formatScore(result?.totalScore)}</td>
-            <td>${this.formatScore(result?.finalScore)}</td>
+            <td class="numeric">${this.formatScore(result?.totalScore)}</td>
+            <td class="numeric">${this.formatScore(result?.finalScore)}</td>
             <td>${this.formatStatus(result?.status)}</td>
           `
           : '';
 
       return `
         <tr>
-          <td>${this.escapeHtml(subject.name)}</td>
-          <td>${raCells || '-'}</td>
+          <td class="subject-name">${this.escapeHtml(subject.name)}</td>
+          ${raCells}
           ${finalCells}
         </tr>
       `;
@@ -313,12 +432,17 @@ export class ReportsService {
 
     return `
       <h2>Módulos técnicos</h2>
-      <table>
+      <table class="technical-grid">
+        <colgroup>
+          <col class="module-column" />
+          ${Array.from({ length: maximumOutcomeOrder }, () => '<col class="ra-column" />').join('')}
+          ${period === 4 ? '<col class="result-column" /><col class="result-column" /><col class="status-column" />' : ''}
+        </colgroup>
         <thead>
           <tr>
-            <th>Módulo</th>
-            <th>Resultados de aprendizaje</th>
-            ${period === 4 ? '<th>Total</th><th>Final</th><th>Estado</th>' : ''}
+            <th>Módulos formativos</th>
+            ${Array.from({ length: maximumOutcomeOrder }, (_, index) => `<th class="numeric">RA${index + 1}</th>`).join('')}
+            ${period === 4 ? '<th class="numeric">Total</th><th class="numeric">Final</th><th>Estado</th>' : ''}
           </tr>
         </thead>
         <tbody>${rows.join('')}</tbody>
@@ -333,16 +457,34 @@ export class ReportsService {
         <head>
           <meta charset="utf-8" />
           <style>
-            @page { size: letter; margin: 14mm; }
+            @page { size: letter landscape; margin: 10mm; }
             * { box-sizing: border-box; }
-            body { color: #111827; font-family: Arial, sans-serif; font-size: 11px; margin: 0; }
-            h1 { font-size: 18px; margin: 0 0 4px; }
-            h2 { border-bottom: 1px solid #d1d5db; font-size: 14px; margin: 18px 0 8px; padding-bottom: 4px; }
+            body { color: #111827; font-family: Arial, sans-serif; font-size: 9px; margin: 0; }
+            h1 { font-size: 16px; margin: 0 0 4px; }
+            h2 { border-bottom: 1px solid #d1d5db; font-size: 12px; margin: 14px 0 6px; padding-bottom: 4px; }
+            h3 { font-size: 10px; margin: 10px 0 4px; }
             p { margin: 2px 0; }
             table { border-collapse: collapse; margin-top: 8px; width: 100%; }
-            th, td { border: 1px solid #d1d5db; padding: 5px 6px; text-align: left; vertical-align: top; }
+            th, td { border: 1px solid #d1d5db; padding: 4px 5px; text-align: left; vertical-align: top; }
             th { background: #f3f4f6; font-weight: 700; }
-            .report-page { break-after: page; min-height: 240mm; }
+            thead { display: table-header-group; }
+            tr { break-inside: avoid; }
+            .numeric { text-align: center; }
+            .recovery { background: #f8fafc; }
+            .average { background: #eaf2f8; font-weight: 700; text-align: center; }
+            .subject-name { font-weight: 700; vertical-align: middle; }
+            .academic-detail { font-size: 7px; table-layout: fixed; }
+            .academic-detail th, .academic-detail td { line-height: 1.15; overflow-wrap: anywhere; padding: 3px 1px; }
+            .academic-detail .subject-column { width: 110px; }
+            .academic-detail .competency-heading { font-size: 7.5px; text-align: center; }
+            .academic-summary { font-size: 8px; }
+            .academic-summary th, .academic-summary td { padding: 4px; }
+            .technical-grid { font-size: 8px; table-layout: fixed; }
+            .technical-grid th, .technical-grid td { padding: 4px 2px; vertical-align: middle; }
+            .technical-grid .module-column { width: 190px; }
+            .technical-grid .result-column { width: 48px; }
+            .technical-grid .status-column { width: 68px; }
+            .report-page { break-after: page; min-height: 185mm; }
             .report-page:last-child { break-after: auto; }
             .report-header { align-items: center; border-bottom: 2px solid #111827; display: grid; gap: 14px; grid-template-columns: 80px 1fr; padding-bottom: 12px; }
             .school-logo { align-items: center; border: 1px solid #d1d5db; display: flex; height: 70px; justify-content: center; width: 70px; }
@@ -364,12 +506,13 @@ export class ReportsService {
       await page.setContent(html, { waitUntil: 'networkidle' });
       const pdf = await page.pdf({
         format: 'Letter',
+        landscape: true,
         printBackground: true,
         margin: {
-          top: '14mm',
-          right: '14mm',
-          bottom: '14mm',
-          left: '14mm',
+          top: '10mm',
+          right: '10mm',
+          bottom: '10mm',
+          left: '10mm',
         },
       });
 
@@ -379,31 +522,16 @@ export class ReportsService {
     }
   }
 
-  private calculateAcademicPeriodAverage(grades: AcademicGrade[], period: number): number | null {
-    const scores = grades
-      .map((grade) => this.academicValidPeriodScore(grade, period))
-      .filter((score): score is number => score !== null);
-
-    if (!scores.length) {
-      return null;
-    }
-
-    return Math.round((scores.reduce((sum, score) => sum + score, 0) / scores.length) * 10) / 10;
-  }
-
-  private academicValidPeriodScore(grade: AcademicGrade, period: number): number | null {
-    const ordinary = this.toNumber(grade[`p${period}` as keyof AcademicGrade]);
-    const recovery = this.toNumber(grade[`rp${period}` as keyof AcademicGrade]);
-
-    if (ordinary === null) {
-      return null;
-    }
-
-    return recovery ?? ordinary;
-  }
-
   private uniqueAcademicSubjects(data: StudentReportData) {
-    const subjects = [...data.academicResults.map((item) => item.subject)];
+    const subjects = (data.assignedSubjects ?? []).filter(
+      (subject) => subject.type === SubjectType.ACADEMIC,
+    );
+
+    for (const result of data.academicResults) {
+      if (!subjects.some((subject) => subject.id === result.subject.id)) {
+        subjects.push(result.subject);
+      }
+    }
 
     for (const grade of data.academicGrades) {
       if (!subjects.some((subject) => subject.id === grade.subject.id)) {
@@ -411,11 +539,24 @@ export class ReportsService {
       }
     }
 
-    return subjects.sort((a, b) => a.name.localeCompare(b.name));
+    return subjects.sort((a, b) => this.compareSubjects(a, b));
+  }
+
+  private academicBlockTitle(blockNumber: number): string {
+    const titles = this.config.get<string[]>('reports.academicBlockTitles') ?? [];
+    return titles[blockNumber - 1]?.trim() || `Competencia académica ${blockNumber}`;
   }
 
   private uniqueTechnicalSubjects(data: StudentReportData) {
-    const subjects = [...data.technicalResults.map((item) => item.subject)];
+    const subjects = (data.assignedSubjects ?? []).filter(
+      (subject) => subject.type === SubjectType.TECHNICAL,
+    );
+
+    for (const result of data.technicalResults) {
+      if (!subjects.some((subject) => subject.id === result.subject.id)) {
+        subjects.push(result.subject);
+      }
+    }
 
     for (const grade of data.technicalGrades) {
       if (!subjects.some((subject) => subject.id === grade.subject.id)) {
@@ -423,7 +564,34 @@ export class ReportsService {
       }
     }
 
-    return subjects.sort((a, b) => a.name.localeCompare(b.name));
+    return subjects.sort((a, b) => this.compareSubjects(a, b));
+  }
+
+  private uniqueTechnicalLearningOutcomes(
+    data: StudentReportData,
+    subjectId: string,
+  ): TechnicalLearningOutcome[] {
+    const outcomes = (data.technicalLearningOutcomes ?? []).filter(
+      (outcome) => outcome.subjectId === subjectId,
+    );
+
+    for (const grade of data.technicalGrades) {
+      if (
+        grade.subjectId === subjectId &&
+        !outcomes.some((outcome) => outcome.id === grade.learningOutcome.id)
+      ) {
+        outcomes.push(grade.learningOutcome);
+      }
+    }
+
+    return outcomes.sort(
+      (left, right) => left.order - right.order || left.code.localeCompare(right.code, 'es'),
+    );
+  }
+
+  private compareSubjects(left: Subject, right: Subject): number {
+    const orderDifference = left.displayOrder - right.displayOrder;
+    return orderDifference || left.name.localeCompare(right.name, 'es');
   }
 
   private groupBy<T>(items: T[], keySelector: (item: T) => string): Map<string, T[]> {
@@ -451,15 +619,6 @@ export class ReportsService {
 
   private formatStatus(status: SubjectStatus | null | undefined): string {
     return status ? this.escapeHtml(status) : '-';
-  }
-
-  private toNumber(value: unknown): number | null {
-    if (value === null || value === undefined) {
-      return null;
-    }
-
-    const numericValue = Number(value);
-    return Number.isFinite(numericValue) ? numericValue : null;
   }
 
   private escapeHtml(value: string): string {

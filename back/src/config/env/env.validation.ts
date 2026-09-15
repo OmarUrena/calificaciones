@@ -11,5 +11,21 @@ export const envValidationSchema = Joi.object({
   SUPABASE_ANON_KEY: Joi.string().required(),
   SUPABASE_SERVICE_ROLE_KEY: Joi.string().required(),
   SUPABASE_STORAGE_BUCKET_SCHOOL_LOGOS: Joi.string().default('school-logos'),
+  ACADEMIC_BLOCK_1_TITLE: Joi.string().trim().min(1).max(160).default('Comunicativa'),
+  ACADEMIC_BLOCK_2_TITLE: Joi.string()
+    .trim()
+    .min(1)
+    .max(160)
+    .default('Pensamiento Lógico, Creativo y Crítico - Resolución de Problemas'),
+  ACADEMIC_BLOCK_3_TITLE: Joi.string()
+    .trim()
+    .min(1)
+    .max(160)
+    .default('Científica y Tecnológica - Ambiental y de la Salud'),
+  ACADEMIC_BLOCK_4_TITLE: Joi.string()
+    .trim()
+    .min(1)
+    .max(160)
+    .default('Ética y Ciudadana - Desarrollo Personal y Espiritual'),
   JWT_SECRET: Joi.string().min(16).required(),
 });

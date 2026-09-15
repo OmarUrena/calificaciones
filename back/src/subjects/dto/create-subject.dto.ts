@@ -1,5 +1,15 @@
 import { SubjectType } from '@prisma/client';
-import { IsBoolean, IsEnum, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export class CreateSubjectDto {
   @IsUUID()
@@ -11,6 +21,12 @@ export class CreateSubjectDto {
 
   @IsEnum(SubjectType)
   type: SubjectType;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(9999)
+  displayOrder?: number;
 
   @IsOptional()
   @IsBoolean()

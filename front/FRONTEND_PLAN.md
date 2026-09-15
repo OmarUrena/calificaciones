@@ -895,6 +895,34 @@ Permitir editar datos de la institución usados en el boletín.
 
 ---
 
+# Fase 20.1: Gestión de usuarios
+
+## Objetivo
+
+Completar la opción Usuarios del panel SUPER_ADMIN con una pantalla funcional en `/users`.
+
+## Tareas
+
+1. Listar usuarios con nombre, correo, rol, escuela, docente vinculado y estado.
+2. Filtrar por texto, escuela, rol y estado.
+3. Crear usuarios con cuenta de acceso en Supabase Auth y contraseña inicial.
+4. Editar datos, rol, escuela y vínculo docente; sincronizar cambios de correo con Auth.
+5. Activar y desactivar usuarios sin borrar sus registros.
+6. Validar escuela obligatoria para ADMIN/TEACHER y docente de la misma escuela para TEACHER.
+7. Proteger la ruta y las operaciones por rol, evitar cambios sobre otra escuela y evitar desactivar o quitarse el propio rol.
+8. Actualizar las listas de usuarios, maestros y usuario actual tras guardar; mostrar errores sin exponer contraseñas.
+
+## Criterios de aceptación
+
+* `/users` abre desde el menú SUPER_ADMIN sin 404.
+* El usuario nuevo puede acceder con el correo y la contraseña definidos.
+* La contraseña no se guarda en las tablas ni en auditoría de CalifApp.
+* Un usuario desactivado no puede utilizar la API de CalifApp.
+* Las cuentas docentes quedan vinculadas a un maestro de su escuela.
+* La pantalla tiene estados de carga, errores y funcionamiento móvil.
+
+---
+
 # Fase 21: Pulido visual y usabilidad
 
 ## Objetivo

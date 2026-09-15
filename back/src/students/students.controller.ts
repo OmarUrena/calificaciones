@@ -19,7 +19,7 @@ export class StudentsController {
   }
 
   @Get()
-  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TEACHER)
   findAll(@CurrentUser() user: AuthenticatedUser) {
     return this.studentsService.findAll(user);
   }

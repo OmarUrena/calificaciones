@@ -45,7 +45,15 @@ export class StudentsService {
 
   findAll(user: AuthenticatedUser) {
     return this.prisma.student.findMany({
-      where: user.role === UserRole.SUPER_ADMIN ? undefined : { schoolId: user.schoolId ?? '' },
+      where:
+        user.role === UserRole.SUPER_ADMIN
+          ? undefined
+          : {
+              schoolId: user.schoolId ?? '',
+              ...(user.role === UserRole.TEACHER
+                ? { course: { titularId: user.teacherId ?? '' } }
+                : {}),
+            },
       include: { course: true, schoolYear: true },
       orderBy: [{ courseId: 'asc' }, { listNumber: 'asc' }],
     });

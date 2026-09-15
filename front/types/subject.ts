@@ -5,11 +5,13 @@ export type Subject = {
   schoolId: string;
   name: string;
   type: SubjectType;
+  displayOrder: number;
   isActive: boolean;
 };
 
 export type SubjectFormValues = {
   name: string;
   type: SubjectType;
+  displayOrder: number;
   isActive: boolean;
 };

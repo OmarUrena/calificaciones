@@ -683,6 +683,7 @@ Acciones:
 
 * Crear asignatura.
 * Editar asignatura.
+* Configurar el orden global de aparición en el boletín mediante un número entero. Los números menores aparecen primero y se recomiendan intervalos de 10.
 * Activar/desactivar.
 * Si es técnica, configurar RA.
 
@@ -1114,6 +1115,12 @@ Características visuales:
 * Texto negro.
 * Estilo formal tipo registro escolar.
 * Orientación horizontal si es necesario.
+
+La sección académica del PDF debe mostrar una sola fila por asignatura. Cada título global de competencia funciona como encabezado de un grupo y debajo se presenta una columna independiente para P1/RP1 hasta el período seleccionado. Una segunda tabla muestra PC1, PC2, PC3 y PC4, correspondientes a los promedios de los bloques 1, 2, 3 y 4, junto con las evaluaciones finales al generar el período 4. El formato es horizontal para mantener las columnas legibles.
+
+El PDF debe mostrar todas las asignaturas académicas y todos los módulos técnicos asignados al curso en el año escolar, aunque el estudiante todavía no tenga calificaciones. Las columnas sin datos se representan con guiones.
+
+La sección técnica debe mostrar una fila por módulo y columnas RA1 hasta RA N según la mayor cantidad u orden de RA de los módulos asignados. Cada RA definido presenta `calificación/peso`, por ejemplo `18/20`; cuando aún no tiene nota presenta `-/peso`.
 
 El boletín debe incluir:
 

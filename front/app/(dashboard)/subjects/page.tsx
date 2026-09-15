@@ -88,6 +88,10 @@ export default function SubjectsPage() {
         cell: ({ row }) => <SubjectTypeBadge type={row.original.type} />,
       },
       {
+        header: "Orden",
+        accessorKey: "displayOrder",
+      },
+      {
         header: "Estado",
         accessorKey: "isActive",
         cell: ({ row }) => (

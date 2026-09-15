@@ -1,5 +1,4 @@
-import { Controller, Get, Header, Param, Query, Res } from '@nestjs/common';
-import { Response } from 'express';
+import { Controller, Get, Param, Query, StreamableFile } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -14,34 +13,29 @@ export class ReportsController {
 
   @Get('students/:studentId/report-card')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TEACHER)
-  @Header('Content-Type', 'application/pdf')
   async generateStudentReportCard(
     @Param('studentId') studentId: string,
     @Query() query: ReportCardQueryDto,
     @CurrentUser() user: AuthenticatedUser,
-    @Res({ passthrough: true }) response: Response,
   ) {
     const pdf = await this.reportsService.generateStudentReportCard(studentId, query.period, user);
-    response.setHeader(
-      'Content-Disposition',
-      `inline; filename="boletin-estudiante-${studentId}.pdf"`,
-    );
-
-    return pdf;
+    return new StreamableFile(pdf, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="boletin-estudiante-${studentId}.pdf"`,
+    });
   }
 
   @Get('courses/:courseId/report-cards')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TEACHER)
-  @Header('Content-Type', 'application/pdf')
   async generateCourseReportCards(
     @Param('courseId') courseId: string,
     @Query() query: ReportCardQueryDto,
     @CurrentUser() user: AuthenticatedUser,
-    @Res({ passthrough: true }) response: Response,
   ) {
     const pdf = await this.reportsService.generateCourseReportCards(courseId, query.period, user);
-    response.setHeader('Content-Disposition', `inline; filename="boletines-curso-${courseId}.pdf"`);
-
-    return pdf;
+    return new StreamableFile(pdf, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="boletines-curso-${courseId}.pdf"`,
+    });
   }
 }

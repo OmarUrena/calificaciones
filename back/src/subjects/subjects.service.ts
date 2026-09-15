@@ -54,13 +54,13 @@ export class SubjectsService {
             },
           },
         },
-        orderBy: { name: 'asc' },
+        orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }],
       });
     }
 
     return this.prisma.subject.findMany({
       where: user.role === UserRole.SUPER_ADMIN ? undefined : { schoolId: user.schoolId ?? '' },
-      orderBy: { name: 'asc' },
+      orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }],
     });
   }
 

@@ -8,6 +8,7 @@ import { rethrowKnownPrismaError } from '../common/utils/prisma-error.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSchoolDto } from './dto/create-school.dto';
 import { UpdateSchoolDto } from './dto/update-school.dto';
+import { SchoolLogoStorageService, SchoolLogoFile } from './school-logo-storage.service';
 
 @Injectable()
 export class SchoolsService {
@@ -15,6 +16,7 @@ export class SchoolsService {
     private readonly prisma: PrismaService,
     private readonly permissionsService: PermissionsService,
     private readonly auditService: AuditService,
+    private readonly logoStorage: SchoolLogoStorageService,
   ) {}
 
   async create(dto: CreateSchoolDto, user: AuthenticatedUser) {
@@ -110,5 +112,14 @@ export class SchoolsService {
     });
 
     return school;
+  }
+
+  async uploadLogo(id: string, file: SchoolLogoFile | undefined, user: AuthenticatedUser) {
+    if (user.role !== UserRole.ADMIN && user.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException('No tienes permiso para modificar el logo de la escuela.');
+    }
+    await this.findOne(id, user);
+    const logoUrl = await this.logoStorage.upload(id, file);
+    return this.update(id, { logoUrl }, user);
   }
 }

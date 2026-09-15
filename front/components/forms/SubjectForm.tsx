@@ -14,6 +14,11 @@ const subjectSchema = z.object({
   type: z.enum(["ACADEMIC", "TECHNICAL"], {
     message: "Selecciona un tipo de asignatura.",
   }),
+  displayOrder: z
+    .number({ message: "El orden es obligatorio." })
+    .int("El orden debe ser un número entero.")
+    .min(0, "El orden no puede ser negativo.")
+    .max(9999, "El orden no puede ser mayor que 9999."),
   isActive: z.boolean(),
 });
 
@@ -27,6 +32,7 @@ type SubjectFormProps = {
 const emptyValues: SubjectFormValues = {
   name: "",
   type: "ACADEMIC",
+  displayOrder: 1000,
   isActive: true,
 };
 
@@ -52,6 +58,7 @@ export function SubjectForm({
         ? {
             name: subject.name,
             type: subject.type,
+            displayOrder: subject.displayOrder,
             isActive: subject.isActive,
           }
         : emptyValues,
@@ -91,7 +98,21 @@ export function SubjectForm({
           </select>
         </Field>
 
-        <label className="form-field flex items-center gap-3 md:col-span-2">
+        <Field label="Orden en el boletín" error={errors.displayOrder?.message}>
+          <input
+            className={cn("form-control", errors.displayOrder && "form-control-error")}
+            min={0}
+            max={9999}
+            step={1}
+            type="number"
+            {...register("displayOrder", { valueAsNumber: true })}
+          />
+          <span className="form-help block">
+            Los números menores aparecen primero. Puedes usar intervalos de 10.
+          </span>
+        </Field>
+
+        <label className="form-field flex items-center gap-3">
           <input
             className="h-5 w-5 rounded border-border text-primary focus:ring-primary"
             type="checkbox"

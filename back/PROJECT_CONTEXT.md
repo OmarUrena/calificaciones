@@ -293,6 +293,7 @@ Campos mínimos:
 * schoolId
 * name
 * type
+* displayOrder
 * isActive
 * createdAt
 * updatedAt
@@ -301,6 +302,8 @@ Tipos:
 
 * ACADEMIC
 * TECHNICAL
+
+`displayOrder` define el orden global de la asignatura dentro de su escuela. Los números menores aparecen primero y los empates se resuelven por nombre. Se recomienda usar intervalos de 10 para poder insertar nuevas materias entre las existentes.
 
 Ejemplos académicos:
 
@@ -1007,6 +1010,8 @@ No se guardará historial de boletines.
 
 El boletín puede generarse aunque las calificaciones estén incompletas.
 
+Debe incluir todas las asignaturas académicas y todos los módulos técnicos que tengan una asignación activa para el curso y el año escolar, incluso si el estudiante aún no tiene calificaciones en ellos. En ese caso, las celdas de notas y resultados se muestran vacías mediante guiones. También se conservan materias con calificaciones históricas para evitar ocultar datos si una asignación fue desactivada posteriormente.
+
 ## 13.1 Permisos para generar boletines
 
 ADMIN:
@@ -1043,6 +1048,19 @@ En el boletín del periodo 2 se muestran calificaciones de periodo 1 y periodo 2
 En el periodo 3 se muestran P1, P2 y P3.
 
 En el periodo 4 se muestran P1, P2, P3 y P4, además de calificaciones finales cuando existan.
+
+Para las asignaturas académicas, el boletín debe conservar la estructura por bloques de competencia:
+
+* Mostrar cada asignatura en una sola fila.
+* Ordenar las asignaturas por el `displayOrder` global configurado para la escuela y después por nombre.
+* Usar el título de cada competencia como encabezado de grupo y mostrar debajo una columna independiente para cada P y RP del período incluido en el boletín.
+* Los títulos de las cuatro competencias son globales y comunes a todas las asignaturas. Se configuran mediante `ACADEMIC_BLOCK_1_TITLE`, `ACADEMIC_BLOCK_2_TITLE`, `ACADEMIC_BLOCK_3_TITLE` y `ACADEMIC_BLOCK_4_TITLE` en el entorno del backend.
+* Después de la tabla de calificaciones, mostrar una segunda tabla con PC1, PC2, PC3 y PC4 como los promedios de los bloques 1, 2, 3 y 4 respectivamente, además del resultado final cuando corresponda.
+* Los PC y las calificaciones finales solo se muestran en el boletín del período 4, porque requieren que estén completas las cuatro notas del bloque.
+* No se deben mezclar ni promediar las notas de distintos bloques para presentarlas como la nota de un período.
+* Esta personalización no requiere guardar datos adicionales en la base de datos.
+
+Para los módulos técnicos, el boletín debe usar una fila por módulo y una columna independiente para cada orden de RA, desde RA1 hasta el mayor orden definido entre los módulos asignados al curso. Cada celda de un RA definido muestra la calificación válida y el peso con el formato `calificación/peso`, por ejemplo `18/20`. Si el RA todavía no tiene nota, muestra `-/peso`; si el módulo no tiene un RA en esa posición, muestra `-`.
 
 ## 13.3 Información que debe mostrar el boletín
 

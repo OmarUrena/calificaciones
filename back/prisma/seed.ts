@@ -178,11 +178,11 @@ async function seedCoreData(): Promise<void> {
   ]);
 
   await Promise.all([
-    upsertSubject(ids.spanish, 'Lengua Espanola', SubjectType.ACADEMIC),
-    upsertSubject(ids.math, 'Matematica', SubjectType.ACADEMIC),
-    upsertSubject(ids.biology, 'Biologia', SubjectType.ACADEMIC),
-    upsertSubject(ids.webDesign, 'Diseno de Portales Web', SubjectType.TECHNICAL),
-    upsertSubject(ids.database, 'Base de Datos', SubjectType.TECHNICAL),
+    upsertSubject(ids.spanish, 'Lengua Espanola', SubjectType.ACADEMIC, 10),
+    upsertSubject(ids.math, 'Matematica', SubjectType.ACADEMIC, 20),
+    upsertSubject(ids.biology, 'Biologia', SubjectType.ACADEMIC, 40),
+    upsertSubject(ids.webDesign, 'Diseno de Portales Web', SubjectType.TECHNICAL, 1000),
+    upsertSubject(ids.database, 'Base de Datos', SubjectType.TECHNICAL, 1010),
   ]);
 }
 
@@ -385,15 +385,21 @@ async function upsertUser(params: {
   });
 }
 
-async function upsertSubject(id: string, name: string, type: SubjectType): Promise<void> {
+async function upsertSubject(
+  id: string,
+  name: string,
+  type: SubjectType,
+  displayOrder: number,
+): Promise<void> {
   await prisma.subject.upsert({
     where: { schoolId_name: { schoolId: ids.school, name } },
-    update: { type, isActive: true },
+    update: { type, displayOrder, isActive: true },
     create: {
       id,
       schoolId: ids.school,
       name,
       type,
+      displayOrder,
       isActive: true,
     },
   });

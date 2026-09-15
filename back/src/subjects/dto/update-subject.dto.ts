@@ -1,5 +1,14 @@
 import { SubjectType } from '@prisma/client';
-import { IsBoolean, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export class UpdateSubjectDto {
   @IsOptional()
@@ -10,6 +19,12 @@ export class UpdateSubjectDto {
   @IsOptional()
   @IsEnum(SubjectType)
   type?: SubjectType;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(9999)
+  displayOrder?: number;
 
   @IsOptional()
   @IsBoolean()

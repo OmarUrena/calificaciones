@@ -1,5 +1,55 @@
 # PROGRESS.md
 
+# Avance del 2026-09-14
+
+- Corregido el acceso de docentes titulares a `/reports`: `GET /school-years`, `GET /courses` y `GET /students` ya aceptan el rol `TEACHER`. Para ese rol, cursos y estudiantes se limitan a los cursos donde el maestro vinculado es titular; las operaciones administrativas permanecen restringidas y los endpoints PDF conservan la validación final de titularidad.
+- Agregadas pruebas de acceso para boletines docentes. Junto con las pruebas de contenido y entrega del PDF pasan 12 casos mediante `node --test test/reports-teacher-access.test.cjs test/reports-academic.test.cjs test/reports-pdf.test.cjs`.
+
+# Avance del 2026-09-13
+
+- Rediseñada la sección de módulos técnicos del boletín como una matriz: una fila por módulo y columnas RA1 hasta el mayor orden de RA existente entre los módulos del curso. Cada RA definido muestra `calificación/peso` (por ejemplo, `18/20`), un RA sin nota muestra `-/peso` y una posición no definida para ese módulo muestra `-`.
+- La consulta del boletín incorpora los RA activos de todos los módulos asignados al curso y conserva RA históricos que ya tengan calificaciones. Una prueba visual con 10 columnas confirma que la tabla cabe en el PDF horizontal.
+- Implementado el orden global de asignaturas por escuela mediante `Subject.displayOrder`. El formulario y la tabla de `/subjects` permiten consultar y editar el orden; los boletines usan el número ascendente y resuelven empates por nombre.
+- Aplicada en Supabase la migración `20260913094500_subject_display_order`. Los datos existentes quedaron en el orden solicitado: Lengua Española 10, Matemática 20, Ciencias Sociales 30, Ciencias de la Naturaleza 40, Inglés 50, Francés 60, Educación Física 70, Educación Artística 80 y Formación Integral Humana y Religiosa 90. Las demás materias conservan el valor predeterminado 1000.
+- Verificación del orden y del diseño técnico: esquema Prisma válido y actualizado en Supabase, builds y lint correctos, y 8 pruebas de reportes aprobadas.
+- Los boletines ahora incluyen todas las asignaturas académicas y todos los módulos técnicos con una asignación activa para el curso y año escolar, aunque el estudiante todavía no tenga calificaciones. Las celdas sin datos se muestran con guiones.
+- Se conservan también las asignaturas con calificaciones históricas aunque su asignación ya no esté activa. La cobertura automatizada de reportes aumentó a 7 casos.
+- Configurados los títulos globales de las cuatro competencias académicas del boletín: Comunicativa; Pensamiento Lógico, Creativo y Crítico - Resolución de Problemas; Científica y Tecnológica - Ambiental y de la Salud; y Ética y Ciudadana - Desarrollo Personal y Espiritual.
+- Los valores quedaron establecidos en el entorno local, en `.env.example` y como valores predeterminados del backend. Se eliminaron los espacios codificados `&#x20;` y no se modificó la base de datos.
+- Ajustada la distribución académica según la referencia visual: cada asignatura ocupa una sola fila y cada P/RP usa una columna independiente bajo el encabezado de su competencia. Los promedios PC1-PC4 y resultados finales se muestran en una tabla horizontal separada para evitar comprimir las notas dentro de una celda.
+
+# Avance del 2026-09-12
+
+- Corregida la sección académica de los boletines PDF: dejó de promediar entre bloques las notas de un mismo período y ahora muestra las calificaciones reales de los cuatro bloques de competencia de cada asignatura.
+- La tabla académica usa una sola fila por asignatura. Cada competencia ocupa una columna con su título y con P1/RP1 hasta P4/RP4 según el período solicitado; luego aparecen PC1, PC2, PC3 y PC4.
+- Los cuatro títulos son globales y comunes a todas las asignaturas. Se configuran con `ACADEMIC_BLOCK_1_TITLE` hasta `ACADEMIC_BLOCK_4_TITLE` en el entorno del backend, sin modificar la base de datos.
+- En el período 4 también aparecen CF, CEC, CCF, CEEX, CEXF, CE, CEF y estado. El PDF ahora usa orientación horizontal para mantener legibles las columnas.
+- Los boletines de períodos anteriores conservan los cuatro bloques, pero no exponen notas, promedios ni resultados finales de períodos posteriores.
+- `test/reports-academic.test.cjs` contiene 7 casos que verifican asignaturas y módulos, títulos globales, períodos, ausencia de datos futuros, materias asignadas sin notas, orden global, columnas RA flexibles, estado vacío y ancho imprimible. También continúan pasando la generación real y descarga HTTP del PDF.
+- Se confirmó con `prisma migrate status` que Supabase conserva el esquema original y no tiene migraciones pendientes; no se aplicó ningún cambio a la base de datos para esta configuración.
+- Fase 20.1 implementada: la opción Usuarios del panel SUPER_ADMIN ya abre `/users` y permite listar, buscar, filtrar y paginar las cuentas por escuela, rol y estado.
+- Se agregó creación y edición de usuarios con nombre, correo, rol, escuela y maestro vinculado. La creación solicita una contraseña inicial y genera la cuenta en Supabase Auth desde el backend; la contraseña no se persiste ni aparece en auditoría.
+- Los cambios de correo se sincronizan con Supabase Auth. Si falla la escritura interna, el backend intenta restaurar el correo anterior; si falla la creación interna, elimina únicamente la cuenta de Auth recién creada para no dejar registros incompletos.
+- Los usuarios pueden activarse y desactivarse conservando su registro. Se impide que una persona desactive su propia cuenta o cambie su propio rol desde esta pantalla.
+- Se validan correo único, escuela obligatoria para ADMIN/TEACHER, pertenencia del maestro a la misma escuela y vínculo único entre maestro y usuario. Un administrador escolar no puede gestionar superadministradores ni cuentas de otra escuela.
+- Pruebas backend: `node --test test/users.test.cjs` pasa 7 casos con Supabase Auth y base de datos simulados, cubriendo creación, compensación de errores, permisos, relaciones, estados y sincronización de correo.
+- Pruebas UI: `node test/users-ui.cjs` pasa para SUPER_ADMIN en móvil y escritorio, ADMIN y TEACHER; cubre acceso por rol, formulario, errores, filtros, paginación, edición y activación/desactivación sin crear cuentas reales.
+- Verificación: build y lint del backend, TypeScript, lint y build del frontend pasan. `/users` aparece entre las rutas generadas por Next.js.
+- Pendiente fase 20.1: crear una cuenta de prueba contra Supabase real y confirmar su inicio de sesión. Las pruebas automatizadas no modificaron cuentas ni datos reales.
+- Corregidas las descargas PDF individuales y por curso: el controlador devolvia un Buffer que Nest/Express serializaba como JSON aunque el archivo tuviera extension .pdf. Ahora devuelve StreamableFile con tipo application/pdf y disposicion de descarga.
+- Se reprodujo el fallo en HTTP (el cuerpo comenzaba por JSON en lugar de %PDF-) y se verifico la correccion con un PDF real generado por Chromium: ambas rutas conservan todos los bytes, encabezados correctos y respuestas de error JSON. `node --test test/reports-pdf.test.cjs`, build backend y lint del controlador pasan.
+- Reiniciado el backend local en modo watch para activar la correccion; los archivos PDF descargados antes del arreglo deben generarse de nuevo.
+- Fase 20 implementada: `/settings` permite editar nombre, codigo, direccion y telefono de la escuela, con validacion de campos obligatorios, guardado, restablecimiento y mensajes de resultado. Los campos opcionales pueden vaciarse.
+- ADMIN configura su propia escuela; SUPER_ADMIN puede seleccionar una; TEACHER no accede a formularios ni consultas de configuracion.
+- Logo con vista previa local, cancelacion de seleccion y guardado independiente para conservar borradores de datos institucionales. Formatos PNG/JPG/WebP, hasta 2 MB.
+- Backend: `POST /schools/:id/logo` valida rol, escuela, tamano y firma del archivo; carga en Supabase Storage y guarda `School.logoUrl` con auditoria. Los boletines ya usan este campo.
+- Storage usa las variables existentes de Supabase y `SUPABASE_STORAGE_BUCKET_SCHOOL_LOGOS` (por defecto `school-logos`). En la primera carga crea el bucket publico si no existe, limitado a imagenes de hasta 2 MB. Si un bucket existente es privado, informa el problema sin cambiar su visibilidad.
+- Tras guardar se actualizan la configuracion, la lista de escuelas y `/auth/me`, para mostrar el nuevo nombre en la cabecera.
+- Verificacion: lint frontend y de archivos backend modificados, TypeScript y builds de ambos proyectos pasan. El build frontend requirio acceso a Google Fonts.
+- Pruebas: `node --test test/school-settings.test.cjs` pasa 5 casos de Storage y HTTP (permisos, aislamiento por escuela, validacion, persistencia y auditoria), con servicios externos simulados. `node test/school-settings-ui.cjs` pasa en navegador para ADMIN en movil, TEACHER y SUPER_ADMIN, con API simulada y frontend en puerto 3100; cubre errores, reintento, vista previa y conservacion de borradores.
+- Pendiente: carga de logo contra Supabase real y comprobacion visual del logo en PDF. No se modificaron datos reales durante estas pruebas.
+- Siguiente fase del frontend: 21 (pulido visual y usabilidad), seguida de 22 (pruebas manuales completas).
+
 # Avance del 2026-09-11
 
 - Agregada prueba de interfaz de la fase 19 para boletines: valida curso y ano escolar preseleccionados, orden de estudiantes, periodo enviado al backend, nombres de las descargas PDF y permisos visuales de ADMIN y maestro titular/no titular.
@@ -120,4 +170,4 @@
 - Los IDs del seed actual no pasan `@IsUUID()` estricto; afecta recursos que envian IDs seed.
 - En estudiantes y maestros, eliminar usa `DELETE`; no existe desactivacion todavia.
 - Falta prueba manual del registro tecnico de fase 17 contra el backend en ejecucion.
-- Fase 18 implementada el 2026-09-05; quedan fase 19 en adelante: boletines, settings, pulido y pruebas manuales.
+- Fases 18, 19 y 20 implementadas; quedan fase 21 (pulido) y fase 22 (pruebas manuales), ademas de las verificaciones con datos reales documentadas arriba.
