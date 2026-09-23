@@ -8,12 +8,12 @@ import {
   UserRole,
   type Subject,
 } from '@prisma/client';
-import { chromium } from 'playwright';
 
 import { AuditService } from '../audit/audit.service';
 import { PermissionsService } from '../common/services/permissions.service';
 import { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import { PrismaService } from '../prisma/prisma.service';
+import { launchReportBrowser } from './report-browser';
 
 type ReportStudent = Prisma.StudentGetPayload<{
   include: {
@@ -499,7 +499,7 @@ export class ReportsService {
   }
 
   private async renderPdf(html: string): Promise<Buffer> {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await launchReportBrowser();
 
     try {
       const page = await browser.newPage();

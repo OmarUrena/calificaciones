@@ -4,6 +4,9 @@
   "private": true,
   "description": "Backend NestJS para gestion de calificaciones academicas y tecnicas.",
   "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.17.0"
+  },
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"scripts/**/*.ts\" \"*.json\" \"*.mjs\" && prisma format",
@@ -25,11 +28,12 @@
     "@nestjs/jwt": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
     "@prisma/client": "^6.0.0",
+    "@sparticuz/chromium": "148.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "exceljs": "^4.4.0",
     "joi": "^17.13.3",
-    "playwright": "^1.0.0",
+    "playwright": "1.60.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "zod": "^3.23.8"
