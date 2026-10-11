@@ -4,6 +4,7 @@ import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { SchoolSettingsForm } from "@/components/forms/SchoolSettingsForm";
 import { SchoolLogoForm } from "@/components/forms/SchoolLogoForm";
+import { AcademicPeriodSettings } from "@/components/forms/AcademicPeriodSettings";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { useSchools } from "@/hooks/use-schools";
 import { useSaveSchoolSettings, useSchoolSettings } from "@/hooks/use-school-settings";
@@ -57,6 +58,7 @@ function SchoolSettings({ schoolId, onBusyChange }: { schoolId: string; onBusyCh
       onBusyChange?.(true);
       try { return await uploadLogo.mutateAsync(file); } finally { onBusyChange?.(false); }
     }} />
+    <AcademicPeriodSettings schoolId={schoolId} />
   </div>;
 }
 

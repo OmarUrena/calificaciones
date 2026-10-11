@@ -11,7 +11,7 @@ const selection = { schoolYearId: 'year', courseId: 'course', subjectId: 'subjec
 function fixture() {
   const writes = [];
   const prisma = {
-    course: { findFirst: async ({ where }) => where.id === 'course' ? { id: 'course', schoolId: 'school', schoolYearId: 'year' } : null },
+    course: { findFirst: async ({ where }) => where.id === 'course' ? { id: 'course', name: '4to A', schoolId: 'school', schoolYearId: 'year' } : null },
     teacherAssignment: { findFirst: async ({ where }) => where.teacherId && where.teacherId !== 'teacher' ? null : { subject: { id: 'subject', name: 'Matemática' } } },
     technicalLearningOutcome: { findMany: async () => [{ id: 'ra-a', code: 'RA1', order: 1 }, { id: 'ra-b', code: 'RA3', order: 2 }] },
     student: {
@@ -26,7 +26,7 @@ function fixture() {
       update: async ({ data }) => ({ id: 'job', ...data }),
     },
   };
-  const academic = { create: async (data) => { writes.push(data); } };
+  const academic = { saveImportedBlocks: async (blocks) => { writes.push(...blocks); } };
   const service = new ImportsService(prisma, new PermissionsService(prisma), academic, {}, { logImport: async () => {} });
   return { service, prisma, writes };
 }
@@ -37,19 +37,56 @@ async function excel(rows) {
   return { originalname: 'datos.xlsx', buffer: Buffer.from(await workbook.xlsx.writeBuffer()) };
 }
 
-test('academic template has all 37 import columns and actual list numbers', async () => {
-  const { service } = fixture();
+test('academic template groups four blocks, colors ordinary/recovery columns and imports without repeating the subject', async () => {
+  const { service, writes } = fixture();
   const buffer = await service.generateTemplate({ ...selection, type: 'academic' }, user);
   const workbook = new Workbook();
   await workbook.xlsx.load(buffer);
   const sheet = workbook.worksheets[0];
-  assert.equal(sheet.columnCount, 37);
-  assert.equal(sheet.getCell('C1').value, 'B1_P1');
-  assert.equal(sheet.getRow(1).getCell(34).value, 'B4_RP4');
-  assert.equal(sheet.getRow(1).getCell(37).value, 'CE');
-  assert.equal(sheet.getCell('A3').value, 8);
-  assert.equal(sheet.getCell('B3').value, 'Matemática');
-  assert.equal(sheet.getCell('C3').value, null);
+  assert.equal(sheet.columnCount, 36);
+  assert.equal(sheet.getCell('B1').value, '4to A');
+  assert.equal(sheet.getCell('B2').value, 'Matemática');
+  assert.deepEqual(['B3', 'J3', 'R3', 'Z3'].map((cell) => sheet.getCell(cell).value),
+    ['Bloque de competencia 1', 'Bloque de competencia 2', 'Bloque de competencia 3', 'Bloque de competencia 4']);
+  assert.equal(sheet.getCell('A4').value, 'numero_lista');
+  assert.equal(sheet.getCell('B4').value, 'B1_P1');
+  assert.equal(sheet.getCell('C4').value, 'B1_RP1');
+  assert.equal(sheet.getCell('AG4').value, 'B4_RP4');
+  assert.equal(sheet.getCell('AJ4').value, 'CE');
+  assert.notEqual(sheet.getCell('B5').fill.fgColor.argb, sheet.getCell('C5').fill.fgColor.argb);
+  assert.equal(sheet.getCell('A5').value, 1);
+  assert.equal(sheet.getCell('A6').value, 8);
+  assert.equal(sheet.getCell('B5').value, null);
+  sheet.getCell('B5').value = 60;
+  sheet.getCell('C5').value = 75;
+  const result = await service.importAcademicGrades({
+    originalname: 'plantilla-academic.xlsx', buffer: Buffer.from(await workbook.xlsx.writeBuffer()),
+  }, selection, user);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.successRows, 1);
+  assert.equal(result.errorRows, 0);
+  assert.equal(writes[0].p1, 60);
+  assert.equal(writes[0].rp1, 75);
+});
+
+test('academic import rejects a template for another course or subject before writing grades', async () => {
+  const { service, writes } = fixture();
+  const workbook = new Workbook();
+  await workbook.xlsx.load(await service.generateTemplate({ ...selection, type: 'academic' }, user));
+  const sheet = workbook.worksheets[0];
+  sheet.getCell('B5').value = 80;
+  sheet.getCell('B2').value = 'Otra asignatura';
+  const wrongSubject = Buffer.from(await workbook.xlsx.writeBuffer());
+  await assert.rejects(() => service.importAcademicGrades({
+    originalname: 'otra-asignatura.xlsx', buffer: wrongSubject,
+  }, selection, user), /asignatura de la plantilla no coincide/);
+  sheet.getCell('B2').value = 'Matemática';
+  sheet.getCell('B1').value = 'Otro curso';
+  const wrongCourse = Buffer.from(await workbook.xlsx.writeBuffer());
+  await assert.rejects(() => service.importAcademicGrades({
+    originalname: 'otro-curso.xlsx', buffer: wrongCourse,
+  }, selection, user), /curso de la plantilla no coincide/);
+  assert.equal(writes.length, 0);
 });
 
 test('technical template uses actual RA codes, including nonconsecutive codes', async () => {
@@ -168,6 +205,19 @@ test('valid grades and row errors produce an accurate partial summary with Excel
   assert.equal(summary.status, 'COMPLETED');
   assert.match(summary.errors[0], /^Fila 4:/);
   assert.equal(writes[0].p1, 80);
+});
+
+test('the Excel importer forwards cumulative grades for filtering during the atomic save', async () => {
+  const { service, writes } = fixture();
+  const summary = await service.importAcademicGrades(await excel([
+    ['numero_lista', 'asignatura', 'B1_P2', 'B2_P1'],
+    [1, 'Matemática', 80, 60],
+  ]), selection, user);
+  assert.equal(summary.errorRows, 0);
+  assert.equal(summary.successRows, 1);
+  assert.equal(writes.length, 2);
+  assert.equal(writes[0].p2, 80);
+  assert.equal(writes[1].p1, 60);
 });
 
 test('empty and corrupt workbooks return actionable validation errors', async () => {

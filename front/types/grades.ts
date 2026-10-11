@@ -75,6 +75,7 @@ export type AcademicRegister = {
   students: Student[];
   grades: AcademicGrade[];
   results: AcademicSubjectResult[];
+  periodControls: { fields: Record<AcademicScoreField, boolean> };
 };
 
 export type AcademicGradeSaveRow = {

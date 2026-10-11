@@ -1,41 +1,35 @@
-import { createClient } from "@supabase/supabase-js";
-
-import { apiFetch, clearStoredToken, setStoredToken } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
+import { SESSION_LAST_ACTIVITY_KEY } from "@/lib/session-config";
+import { supabase } from "@/lib/supabase-client";
 import type { CurrentUser, LoginCredentials, UserRole } from "@/types/auth";
-
-const TOKEN_COOKIE_NAME = "califapp_token";
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-const supabase =
-  supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
 export async function login(credentials: LoginCredentials) {
   if (!supabase) {
     throw new Error("Faltan NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY.");
   }
 
+  const previousActivity = window.localStorage.getItem(SESSION_LAST_ACTIVITY_KEY);
+  window.localStorage.removeItem(SESSION_LAST_ACTIVITY_KEY);
   const { data, error } = await supabase.auth.signInWithPassword(credentials);
 
   if (error || !data.session?.access_token) {
+    if (previousActivity) window.localStorage.setItem(SESSION_LAST_ACTIVITY_KEY, previousActivity);
     throw new Error(error?.message ?? "No se pudo iniciar sesión con Supabase.");
   }
 
-  const token = data.session.access_token;
-  setStoredToken(token);
-  setAuthCookie(token);
-
+  window.localStorage.setItem(SESSION_LAST_ACTIVITY_KEY, String(Date.now()));
   try {
     const user = await getCurrentUser();
+    clearLegacyAuth();
 
     return {
-      accessToken: token,
       user,
     };
   } catch (error) {
-    clearStoredToken();
-    clearAuthCookie();
-    void supabase.auth.signOut();
+    if (error instanceof ApiError && error.code === "UNAUTHENTICATED") {
+      await supabase.auth.signOut({ scope: "local" });
+      window.localStorage.removeItem(SESSION_LAST_ACTIVITY_KEY);
+    }
     throw error;
   }
 }
@@ -44,10 +38,15 @@ export async function getCurrentUser() {
   return apiFetch<CurrentUser>("/auth/me");
 }
 
-export function logout() {
-  void supabase?.auth.signOut();
-  clearStoredToken();
-  clearAuthCookie();
+export async function logout() {
+  if (supabase) {
+    const { error } = await supabase.auth.signOut({ scope: "local" });
+    if (error) throw error;
+  }
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(SESSION_LAST_ACTIVITY_KEY);
+    clearLegacyAuth();
+  }
 }
 
 export function getRoleRedirectPath(role: UserRole) {
@@ -56,12 +55,8 @@ export function getRoleRedirectPath(role: UserRole) {
   return "/dashboard";
 }
 
-function setAuthCookie(token: string) {
+export function clearLegacyAuth() {
   if (typeof document === "undefined") return;
-  document.cookie = `${TOKEN_COOKIE_NAME}=${encodeURIComponent(token)}; path=/; max-age=604800; samesite=lax`;
-}
-
-function clearAuthCookie() {
-  if (typeof document === "undefined") return;
-  document.cookie = `${TOKEN_COOKIE_NAME}=; path=/; max-age=0; samesite=lax`;
+  window.localStorage.removeItem("califapp_token");
+  document.cookie = "califapp_token=; path=/; max-age=0; samesite=lax";
 }

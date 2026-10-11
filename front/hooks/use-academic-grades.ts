@@ -64,10 +64,12 @@ export function useSaveAcademicBlock(courseId: string, subjectId: string) {
 
       return results;
     },
-    onSettled: () =>
+    onSuccess: () =>
       queryClient.invalidateQueries({
         queryKey: getAcademicRegisterQueryKey(courseId, subjectId),
       }),
+    onError: () =>
+      queryClient.invalidateQueries({ queryKey: ["academic-period-controls"] }),
   });
 }
 

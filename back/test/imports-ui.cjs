@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
 const { Workbook } = require('exceljs');
+const { seedUiSession } = require('./ui-session-fixture.cjs');
 
 const origin = 'http://localhost:3100';
 const year = { id: 'year', name: '2026-2027' };
@@ -17,12 +18,11 @@ const assignments = [
   const workbook = new Workbook();
   workbook.addWorksheet('Datos').addRows([['numero_lista', 'asignatura', 'B1_P1'], [1, 'Matemática', 80]]);
   const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, executablePath: process.env.UI_BROWSER_PATH });
   try {
     for (const role of ['ADMIN', 'TEACHER']) {
       const context = await browser.newContext({ viewport: { width: role === 'ADMIN' ? 1280 : 390, height: 844 }, acceptDownloads: true });
-      await context.addCookies([{ name: 'califapp_token', value: 'test-only', url: origin }]);
-      await context.addInitScript(() => localStorage.setItem('califapp_token', 'test-only'));
+      await seedUiSession(context);
       const user = { id: 'user', fullName: 'Usuario de prueba', role, teacherId: 'teacher', schoolId: 'school', school: { id: 'school', name: 'Escuela de prueba' }, activeSchoolYear: year };
       const requests = [];
       await context.route('**/*', async (route) => {

@@ -1,17 +1,26 @@
 "use client";
 
 import { GraduationCap, Loader2 } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
+import { SESSION_IDLE_MINUTES } from "@/lib/session-config";
 
 export default function LoginPage() {
   const { login, isLoggingIn } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [inactive, setInactive] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setInactive(new URLSearchParams(window.location.search).get("reason") === "inactive");
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -19,7 +28,6 @@ export default function LoginPage() {
     try {
       await login({ email, password });
     } catch (error) {
-      console.log(error);
       const message =
         error instanceof ApiError ? error.message : "No se pudo iniciar sesión.";
       toast.error(message);
@@ -35,6 +43,11 @@ export default function LoginPage() {
           </div>
           <h1 className="institutional-title">CalifApp</h1>
           <p className="institutional-subtitle">Inicia sesión para continuar</p>
+          {inactive && (
+            <p role="status" className="mt-4 rounded-md bg-amber-50 p-3 text-sm text-amber-900">
+              Tu sesión terminó después de {SESSION_IDLE_MINUTES} minutos sin actividad.
+            </p>
+          )}
         </div>
 
         <form className="space-y-4" onSubmit={handleSubmit}>

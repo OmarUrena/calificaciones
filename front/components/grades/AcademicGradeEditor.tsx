@@ -17,6 +17,7 @@ import {
   useSaveAcademicBlock,
   useSaveAcademicFinalEvaluations,
 } from "@/hooks/use-academic-grades";
+import { useAcademicPeriodControls } from "@/hooks/use-academic-period-controls";
 import type {
   AcademicFinalEvaluationValues,
   AcademicGrade,
@@ -44,6 +45,8 @@ export function AcademicGradeEditor({ register }: { register: AcademicRegister }
   const [dirtyAcademicRows, setDirtyAcademicRows] = useState<Set<string>>(() => new Set());
   const [dirtyFinalRows, setDirtyFinalRows] = useState<Set<string>>(() => new Set());
   const saveBlock = useSaveAcademicBlock(register.course.id, register.subject.id);
+  const periodQuery = useAcademicPeriodControls(register.course.schoolYearId);
+  const openFields = periodQuery.data?.fields ?? register.periodControls.fields;
   const saveFinalEvaluations = useSaveAcademicFinalEvaluations(
     register.course.id,
     register.subject.id,
@@ -92,9 +95,16 @@ export function AcademicGradeEditor({ register }: { register: AcademicRegister }
     field: AcademicScoreField,
     value: number | null,
   ) {
-    if (activeTab === "summary") return;
+    if (activeTab === "summary" || openFields[field] === false) return;
 
     const draftKey = getAcademicDraftKey(activeTab, studentId);
+    if (isOrdinaryField(field) && (value === null || value >= 70)) {
+      const recoveryField = RECOVERY_BY_ORDINARY[field];
+      if (openFields[recoveryField] === false && academicDrafts[draftKey][recoveryField] !== null) {
+        toast.error(`${recoveryField.toUpperCase()} está cerrado. Debe reabrirse para cambiar esta nota.`);
+        return;
+      }
+    }
     setAcademicDrafts((current) => {
       const scores = { ...current[draftKey], [field]: value };
 
@@ -260,6 +270,7 @@ export function AcademicGradeEditor({ register }: { register: AcademicRegister }
           <AcademicGradeTable
             dirtyStudentIds={activeDirtyStudentIds}
             onScoreChange={handleScoreChange}
+            openFields={openFields}
             scoresByStudent={activeScoresByStudent}
             students={register.students}
           />

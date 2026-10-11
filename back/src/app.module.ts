@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AcademicGradesModule } from './academic-grades/academic-grades.module';
+import { AcademicPeriodControlsModule } from './academic-period-controls/academic-period-controls.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
@@ -42,6 +43,7 @@ import { UsersModule } from './users/users.module';
     SubjectsModule,
     TeacherAssignmentsModule,
     AcademicGradesModule,
+    AcademicPeriodControlsModule,
     TechnicalLearningOutcomesModule,
     TechnicalGradesModule,
     ImportsModule,

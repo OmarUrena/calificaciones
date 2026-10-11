@@ -2,16 +2,16 @@
 // API and image requests are simulated. No real database or Storage writes occur.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
+const { seedUiSession } = require('./ui-session-fixture.cjs');
 const origin = 'http://localhost:3100';
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aEAAAAABJRU5ErkJggg==', 'base64');
 
 (async () => {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, executablePath: process.env.UI_BROWSER_PATH });
   try {
     for (const role of ['ADMIN', 'TEACHER', 'SUPER_ADMIN']) {
       const context = await browser.newContext({ viewport: { width: role === 'ADMIN' ? 390 : 1280, height: 844 } });
-      await context.addCookies([{ name: 'califapp_token', value: 'test-token', url: origin }]);
-      await context.addInitScript(() => localStorage.setItem('califapp_token', 'test-token'));
+      await seedUiSession(context);
       let school = { id: 'school-a', name: 'Escuela original', code: 'A', address: 'Dirección anterior', phone: '123', logoUrl: null, isActive: true };
       let failUpload = true;
       const patches = [];

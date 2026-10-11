@@ -2,15 +2,15 @@
 // All API calls are simulated; no real accounts or database records are created.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
+const { seedUiSession } = require('./ui-session-fixture.cjs');
 const origin = 'http://localhost:3100';
 
 (async () => {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, executablePath: process.env.UI_BROWSER_PATH });
   try {
     for (const role of ['SUPER_ADMIN', 'ADMIN', 'TEACHER']) {
       const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
-      await context.addCookies([{ name: 'califapp_token', value: 'test-token', url: origin }]);
-      await context.addInitScript(() => localStorage.setItem('califapp_token', 'test-token'));
+      await seedUiSession(context);
       const schools = [{ id: 'a', name: 'Escuela A', isActive: true }, { id: 'b', name: 'Escuela B', isActive: true }];
       const teachers = [{ id: 'ta', schoolId: 'a', name: 'Maestro disponible' }, { id: 'tb', schoolId: 'b', name: 'Maestro otra escuela' }, { id: 'tc', schoolId: 'a', name: 'Maestro ocupado' }];
       let users = [

@@ -1,5 +1,38 @@
 # PROGRESS.md
 
+# Avance del 2026-10-09: sesiones e inactividad
+
+- La interfaz usa la sesión de Supabase como única fuente de token: cada petición obtiene el token vigente, incluso tras recarga o renovación. Se retiraron la copia manual en `localStorage` y la cookie `califapp_token`, junto con el `proxy` que solo comprobaba su presencia.
+- El login limpia el caché de otro usuario y coloca el usuario validado antes de navegar. El dashboard solo redirige ante un `401` real; ante red caída o `5xx` muestra reintento sin destruir la sesión. El backend devuelve `503` si Supabase Auth no responde y `401` si el token es inválido.
+- Política de inactividad centralizada en `front/lib/session-config.ts`: aviso tras 2 minutos de inactividad y cierre a los 15 minutos (ajustado para pruebas). La actividad se comparte entre pestañas; el aviso requiere confirmar «Continuar sesión». Se muestra el motivo al volver al login.
+- Pruebas: frontend lint/build; backend build y pruebas de clasificación de errores; prueba de navegador con recarga, renovación, error temporal, `401`, aviso, cierre por inactividad, nuevo login y logout entre pestañas. Las pruebas UI existentes se adaptaron a la sesión de Supabase.
+- Pendiente de configuración externa: si se requiere imposición estricta del límite también para clientes que evadan el navegador, configurar o implementar un control del lado servidor. El temporizador actual protege el uso normal de la aplicación web, no invalida anticipadamente un JWT ya emitido.
+
+# Avance del 2026-10-09: importación acumulativa
+
+- La importación académica ahora ignora las notas de períodos cerrados en todos los bloques y las notas iguales a las ya guardadas. Solo escribe notas abiertas con cambios; una fila sin cambios no produce escritura ni auditoría.
+- El filtro se aplica dentro de la transacción y del bloqueo del año escolar. La edición manual mantiene el rechazo de cambios en períodos cerrados. No requiere otra migración de base de datos.
+- La hoja de instrucciones de la plantilla explica este comportamiento. Pasan la compilación, lint y las 20 pruebas de importaciones y controles de períodos.
+
+# Avance del 2026-10-09: plantilla académica
+
+- Rediseñada la plantilla XLSX académica con curso y asignatura en la cabecera, cuatro encabezados de bloque de competencia, separación visual entre bloques y colores distintos para notas ordinarias y recuperaciones. La columna de asignatura ya no se repite por estudiante.
+- El importador detecta la fila de encabezados de la nueva plantilla y sigue aceptando el formato anterior. Usa la asignatura seleccionada en la pantalla cuando la columna `asignatura` no existe, comprueba que curso y asignatura de la cabecera coincidan con la selección y omite filas de estudiantes sin notas.
+- Generada una vista previa en `artifacts/plantilla-academic-revisada.xlsx` a partir de la plantilla de ejemplo del usuario, sin modificar el original. Compilaciones, lint y pruebas de importaciones pasan.
+
+# Avance del 2026-10-09
+
+- Aplicada en la base Supabase configurada la migración `20261008000000_academic_period_controls`. `prisma migrate status` confirma que el esquema está actualizado y no hay migraciones pendientes. La migración crea únicamente la tabla de controles; los períodos existentes permanecen abiertos por defecto.
+
+# Avance del 2026-10-08 (rama feature/nuevas-funcionalidades)
+
+- Agregado control de edición de notas académicas por escuela y año escolar, con estados independientes para P1/RP1 hasta P4/RP4. Cada estado aplica a los cuatro bloques de competencias; los años sin configuración comienzan abiertos.
+- ADMIN configura los períodos de su escuela en `/settings`; SUPER_ADMIN puede seleccionar escuela y año escolar. Los docentes pueden consultar los estados, pero no cambiarlos. Cada cambio se audita.
+- El backend rechaza la creación, modificación o borrado manual de una nota de un período cerrado. La importación Excel ignora las notas cerradas y permite actualizar los períodos abiertos de la misma fila.
+- La escritura de una nota y el cierre/reapertura comparten un bloqueo transaccional del año escolar. El registro muestra las celdas cerradas como solo lectura; la importación filtra las notas cerradas de todos los bloques de cada fila antes de escribir los cambios.
+- Migración registrada en `back/prisma/migrations/20261008000000_academic_period_controls`. Compilaciones de backend y frontend, lint y pruebas locales de períodos e importaciones pasan con dependencias locales sincronizadas.
+- Pendiente: comprobar los flujos completos con la base de datos real. Los módulos técnicos y evaluaciones finales conservan su gestión actual.
+
 # Avance del 2026-09-14
 
 - Corregido el acceso de docentes titulares a `/reports`: `GET /school-years`, `GET /courses` y `GET /students` ya aceptan el rol `TEACHER`. Para ese rol, cursos y estudiantes se limitan a los cursos donde el maestro vinculado es titular; las operaciones administrativas permanecen restringidas y los endpoints PDF conservan la validación final de titularidad.

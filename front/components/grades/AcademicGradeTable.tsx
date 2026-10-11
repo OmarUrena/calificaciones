@@ -30,11 +30,13 @@ export function AcademicGradeTable({
   scoresByStudent,
   dirtyStudentIds,
   onScoreChange,
+  openFields,
 }: {
   students: Student[];
   scoresByStudent: Record<string, AcademicScoreValues>;
   dirtyStudentIds: Set<string>;
   onScoreChange: (studentId: string, field: AcademicScoreField, value: number | null) => void;
+  openFields: Record<AcademicScoreField, boolean>;
 }) {
   const invalidRows = students.filter(
     (student) => Object.keys(validateAcademicScores(scoresByStudent[student.id])).length > 0,
@@ -87,7 +89,8 @@ export function AcademicGradeTable({
                     ) : null}
                   </td>
                   {SCORE_COLUMNS.map(({ field, label }) => {
-                    const disabled = isRecoveryDisabled(field, scores);
+                    const closed = openFields[field] === false;
+                    const disabled = closed || isRecoveryDisabled(field, scores);
                     const error = errors[field];
 
                     return (
@@ -105,9 +108,9 @@ export function AcademicGradeTable({
                           onChange={(event) =>
                             onScoreChange(student.id, field, parseGradeInput(event.target.value))
                           }
-                          placeholder={disabled ? "N/A" : "—"}
+                          placeholder={closed ? "Cerrado" : disabled ? "N/A" : "—"}
                           step="0.01"
-                          title={error ?? (disabled ? "La recuperación no aplica." : undefined)}
+                          title={closed ? `${label} está cerrado para este año escolar.` : error ?? (disabled ? "La recuperación no aplica." : undefined)}
                           type="number"
                           value={scores[field] ?? ""}
                         />

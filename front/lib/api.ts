@@ -4,9 +4,10 @@ import type {
   ApiRequestOptions,
   UploadFileOptions,
 } from "@/types/api";
+import { SESSION_IDLE_MS, SESSION_LAST_ACTIVITY_KEY } from "@/lib/session-config";
+import { supabase } from "@/lib/supabase-client";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
-const TOKEN_STORAGE_KEY = "califapp_token";
 
 export class ApiError extends Error {
   status: number;
@@ -26,23 +27,8 @@ export function getApiBaseUrl() {
   return API_URL.replace(/\/$/, "");
 }
 
-export function getStoredToken() {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(TOKEN_STORAGE_KEY);
-}
-
-export function setStoredToken(token: string) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
-}
-
-export function clearStoredToken() {
-  if (typeof window === "undefined") return;
-  window.localStorage.removeItem(TOKEN_STORAGE_KEY);
-}
-
 export async function apiFetch<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
-  const response = await fetch(buildUrl(path), buildOptions(options)).catch(() => {
+  const response = await fetch(buildUrl(path), await buildOptions(options)).catch(() => {
     throw new ApiError(0, "NETWORK_ERROR", "No se pudo conectar con el servidor.");
   });
 
@@ -58,7 +44,7 @@ export async function apiFetch<T>(path: string, options: ApiRequestOptions = {})
 }
 
 export async function downloadBlob(path: string, options: ApiRequestOptions = {}) {
-  const response = await fetch(buildUrl(path), buildOptions(options)).catch(() => {
+  const response = await fetch(buildUrl(path), await buildOptions(options)).catch(() => {
     throw new ApiError(0, "NETWORK_ERROR", "No se pudo descargar el archivo.");
   });
 
@@ -91,9 +77,9 @@ function buildUrl(path: string) {
   return `${getApiBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
-function buildOptions(options: ApiRequestOptions): RequestInit {
+async function buildOptions(options: ApiRequestOptions): Promise<RequestInit> {
   const { token, headers, body, ...rest } = options;
-  const authToken = token ?? getStoredToken();
+  const authToken = token ?? (await getAccessToken());
   const requestHeaders = new Headers(headers);
 
   if (authToken) {
@@ -109,6 +95,27 @@ function buildOptions(options: ApiRequestOptions): RequestInit {
     body,
     headers: requestHeaders,
   };
+}
+
+async function getAccessToken(): Promise<string | null> {
+  if (!supabase) return null;
+
+  const { data, error } = await supabase.auth.getSession();
+  if (error) {
+    if ([400, 401, 403].includes(error.status ?? 0)) {
+      throw new ApiError(401, "UNAUTHENTICATED", "La sesión ya no es válida.");
+    }
+    throw new ApiError(0, "NETWORK_ERROR", "No se pudo verificar la sesión. Inténtalo de nuevo.");
+  }
+
+  if (data.session && typeof window !== "undefined") {
+    const lastActivity = Number(window.localStorage.getItem(SESSION_LAST_ACTIVITY_KEY));
+    if (lastActivity > 0 && Date.now() - lastActivity >= SESSION_IDLE_MS) {
+      throw new ApiError(401, "UNAUTHENTICATED", "La sesión terminó por inactividad.");
+    }
+  }
+
+  return data.session?.access_token ?? null;
 }
 
 async function buildApiError(response: Response) {

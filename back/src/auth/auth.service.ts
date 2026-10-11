@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { UserRole } from '@prisma/client';
 
@@ -75,21 +75,29 @@ export class AuthService {
   private async getSupabaseUser(token: string): Promise<SupabaseAuthUser> {
     const url = new URL('/auth/v1/user', this.supabaseUrl);
 
+    let response: Response;
     try {
-      const response = await fetch(url, {
+      response = await fetch(url, {
         headers: {
           apikey: this.supabaseAnonKey,
           authorization: `Bearer ${token}`,
         },
+        signal: AbortSignal.timeout(8_000),
       });
+    } catch {
+      throw new ServiceUnavailableException('No se pudo consultar el servicio de autenticación.');
+    }
 
-      if (!response.ok) {
-        throw new UnauthorizedException('Invalid or expired token.');
-      }
-
+    if (response.status === 401 || response.status === 403) {
+      throw new UnauthorizedException('Invalid or expired token.');
+    }
+    if (!response.ok) {
+      throw new ServiceUnavailableException('El servicio de autenticación no está disponible.');
+    }
+    try {
       return (await response.json()) as SupabaseAuthUser;
     } catch {
-      throw new UnauthorizedException('Invalid or expired token.');
+      throw new ServiceUnavailableException('Respuesta inválida del servicio de autenticación.');
     }
   }
 

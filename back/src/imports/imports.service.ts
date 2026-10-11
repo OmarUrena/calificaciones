@@ -9,7 +9,6 @@ import { Workbook } from 'exceljs';
 
 import { AcademicGradesService } from '../academic-grades/academic-grades.service';
 import { CreateAcademicGradeDto } from '../academic-grades/dto/create-academic-grade.dto';
-import { UpdateAcademicGradeDto } from '../academic-grades/dto/update-academic-grade.dto';
 import { AuditService } from '../audit/audit.service';
 import { PermissionsService } from '../common/services/permissions.service';
 import { AuthenticatedUser } from '../common/types/authenticated-user.type';
@@ -21,6 +20,7 @@ import { ImportGradesDto } from './dto/import-grades.dto';
 import { ImportStudentsDto } from './dto/import-students.dto';
 import { UploadedExcelFile } from './types/uploaded-excel-file.type';
 import { ImportTemplateDto } from './dto/import-template.dto';
+import { formatAcademicTemplate } from './academic-template';
 
 type ImportRow = Record<string, string | number | null>;
 
@@ -28,6 +28,7 @@ type ImportContext = {
   schoolId: string;
   schoolYearId: string;
   courseId?: string;
+  courseName?: string;
   subjectId?: string;
 };
 
@@ -87,11 +88,56 @@ export class ImportsService {
     user: AuthenticatedUser,
   ): Promise<ImportSummary> {
     const context = await this.resolveCourseContext(dto.schoolYearId, dto.courseId, user);
+    let selectedSubjectName: string | undefined;
     if (dto.subjectId) {
-      await this.resolveSelectedSubject(context, dto.subjectId, SubjectType.ACADEMIC, user);
+      const selectedSubject = await this.resolveSelectedSubject(
+        context,
+        dto.subjectId,
+        SubjectType.ACADEMIC,
+        user,
+      );
       context.subjectId = dto.subjectId;
+      selectedSubjectName = selectedSubject.name;
     }
-    const rows = await this.readRows(file);
+    const importedRows = await this.readRows(file);
+    const templateCourse = importedRows[0]?.plantilla_curso;
+    const templateSubject = importedRows[0]?.plantilla_asignatura;
+    if (
+      templateCourse &&
+      context.courseName &&
+      this.normalizeHeader(String(templateCourse)) !== this.normalizeHeader(context.courseName)
+    ) {
+      throw new BadRequestException(
+        'El curso de la plantilla no coincide con el curso seleccionado.',
+      );
+    }
+    if (templateSubject && !selectedSubjectName) {
+      throw new BadRequestException(
+        'Selecciona la asignatura de esta plantilla antes de importar.',
+      );
+    }
+    if (
+      templateSubject &&
+      selectedSubjectName &&
+      this.normalizeHeader(String(templateSubject)) !== this.normalizeHeader(selectedSubjectName)
+    ) {
+      throw new BadRequestException(
+        'La asignatura de la plantilla no coincide con la seleccionada.',
+      );
+    }
+    const rows = importedRows.filter((row) =>
+      Object.entries(row).some(
+        ([key, value]) =>
+          (/^b[1-4]_(?:p|rp)[1-4]$/.test(key) || ['cec', 'ceex', 'ce'].includes(key)) &&
+          value !== null &&
+          value !== '',
+      ),
+    );
+    if (!rows.length) {
+      throw new BadRequestException(
+        'El archivo no contiene calificaciones académicas para importar.',
+      );
+    }
     const job = await this.createJob({
       type: ImportType.ACADEMIC_GRADES,
       file,
@@ -223,9 +269,13 @@ export class ImportsService {
     user: AuthenticatedUser,
   ): Promise<void> {
     const student = await this.findStudentByListNumber(row, context);
-    const subject = await this.findSubjectByName(row, context.schoolId, SubjectType.ACADEMIC);
+    const subject = row.asignatura
+      ? await this.findSubjectByName(row, context.schoolId, SubjectType.ACADEMIC)
+      : context.subjectId
+        ? { id: context.subjectId }
+        : await this.findSubjectByName(row, context.schoolId, SubjectType.ACADEMIC);
     this.ensureSelectedSubject(context, subject.id);
-    let importedBlocks = 0;
+    const pending: CreateAcademicGradeDto[] = [];
 
     for (const blockNumber of [1, 2, 3, 4]) {
       const gradeDto = this.buildAcademicGradeDto(
@@ -240,35 +290,14 @@ export class ImportsService {
         continue;
       }
 
-      const existing = await this.prisma.academicGrade.findUnique({
-        where: {
-          schoolId_schoolYearId_studentId_subjectId_blockNumber: {
-            schoolId: context.schoolId,
-            schoolYearId: context.schoolYearId,
-            studentId: student.id,
-            subjectId: subject.id,
-            blockNumber,
-          },
-        },
-        select: { id: true },
-      });
-
-      if (existing) {
-        await this.academicGradesService.update(
-          existing.id,
-          this.toAcademicUpdateDto(gradeDto),
-          user,
-        );
-      } else {
-        await this.academicGradesService.create(gradeDto, user);
-      }
-
-      importedBlocks += 1;
+      pending.push(gradeDto);
     }
 
-    if (importedBlocks === 0) {
+    if (pending.length === 0) {
       throw new BadRequestException('No academic grade columns were provided.');
     }
+
+    await this.academicGradesService.saveImportedBlocks(pending, user);
 
     const cec = this.optionalNumber(row, 'cec');
     const ceex = this.optionalNumber(row, 'ceex');
@@ -398,16 +427,47 @@ export class ImportsService {
     const headers: string[] = [];
     const rows: ImportRow[] = [];
 
-    worksheet.getRow(1).eachCell((cell, columnNumber) => {
+    let headerRowNumber = 0;
+    for (let number = 1; number <= Math.min(10, worksheet.rowCount); number += 1) {
+      let hasListNumber = false;
+      worksheet.getRow(number).eachCell((cell) => {
+        if (this.normalizeHeader(String(this.cellToValue(cell.value) ?? '')) === 'numero_lista') {
+          hasListNumber = true;
+        }
+      });
+      if (hasListNumber) {
+        headerRowNumber = number;
+        break;
+      }
+    }
+    if (!headerRowNumber) {
+      throw new BadRequestException('No se encontró la columna numero_lista en el Excel.');
+    }
+
+    worksheet.getRow(headerRowNumber).eachCell((cell, columnNumber) => {
       headers[columnNumber] = this.normalizeHeader(String(this.cellToValue(cell.value) ?? ''));
     });
+    const templateCourse =
+      headerRowNumber > 1 &&
+      this.normalizeHeader(String(this.cellToValue(worksheet.getCell('A1').value) ?? '')) ===
+        'curso'
+        ? this.cellToValue(worksheet.getCell('B1').value)
+        : null;
+    const templateSubject =
+      headerRowNumber > 1 &&
+      this.normalizeHeader(String(this.cellToValue(worksheet.getCell('A2').value) ?? '')) ===
+        'asignatura'
+        ? this.cellToValue(worksheet.getCell('B2').value)
+        : null;
 
     worksheet.eachRow((worksheetRow, rowNumber) => {
-      if (rowNumber === 1) {
+      if (rowNumber <= headerRowNumber) {
         return;
       }
 
       const row: ImportRow = { fila: rowNumber };
+      if (templateCourse !== null) row.plantilla_curso = templateCourse;
+      if (templateSubject !== null) row.plantilla_asignatura = templateSubject;
       let hasValue = false;
 
       worksheetRow.eachCell({ includeEmpty: true }, (cell, columnNumber) => {
@@ -483,6 +543,7 @@ export class ImportsService {
       schoolId: course.schoolId,
       schoolYearId,
       courseId,
+      courseName: course.name,
     };
   }
 
@@ -531,7 +592,7 @@ export class ImportsService {
     const context = await this.resolveCourseContext(dto.schoolYearId, dto.courseId, user);
     const workbook = new Workbook();
     const sheet = workbook.addWorksheet('Datos');
-    let headers: string[];
+    let headers: string[] = [];
     let subjectName = '';
     if (dto.type === 'students') {
       headers = ['numero_lista', 'nombres', 'apellidos', 'curso'];
@@ -545,13 +606,21 @@ export class ImportsService {
       );
       subjectName = subject.name;
       if (dto.type === 'academic') {
-        headers = ['numero_lista', 'asignatura'];
-        for (const block of [1, 2, 3, 4]) {
-          for (const period of [1, 2, 3, 4]) {
-            headers.push(`B${block}_P${period}`, `B${block}_RP${period}`);
-          }
-        }
-        headers.push('CEC', 'CEEX', 'CE');
+        const students = await this.prisma.student.findMany({
+          where: {
+            schoolId: context.schoolId,
+            schoolYearId: context.schoolYearId,
+            courseId: dto.courseId,
+          },
+          orderBy: { listNumber: 'asc' },
+          select: { listNumber: true },
+        });
+        formatAcademicTemplate(
+          sheet,
+          context.courseName ?? dto.courseId,
+          subjectName,
+          students.map((student) => student.listNumber),
+        );
       } else {
         const outcomes = await this.prisma.technicalLearningOutcome.findMany({
           where: { schoolId: context.schoolId, subjectId: dto.subjectId, isActive: true },
@@ -565,15 +634,17 @@ export class ImportsService {
         ];
       }
     }
-    sheet.columns = headers.map((header) => ({
-      header,
-      key: header,
-      width: header === 'asignatura' || header === 'modulo' ? 40 : 20,
-    }));
-    sheet.views = [{ state: 'frozen', ySplit: 1, xSplit: dto.type === 'students' ? 1 : 2 }];
-    sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E79' } };
-    if (dto.type !== 'students') {
+    if (dto.type !== 'academic') {
+      sheet.columns = headers.map((header) => ({
+        header,
+        key: header,
+        width: header === 'modulo' ? 40 : 20,
+      }));
+      sheet.views = [{ state: 'frozen', ySplit: 1, xSplit: dto.type === 'students' ? 1 : 2 }];
+      sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E79' } };
+    }
+    if (dto.type === 'technical') {
       const students = await this.prisma.student.findMany({
         where: {
           schoolId: context.schoolId,
@@ -588,16 +659,29 @@ export class ImportsService {
     const instructions = workbook.addWorksheet('Instrucciones');
     instructions.getColumn(1).width = 110;
     instructions.addRows([
+      ['Completa la hoja Datos sin cambiar los encabezados de las columnas.'],
       [
-        'Completa la hoja Datos sin cambiar sus encabezados. Elimina las filas que no desees importar.',
+        `Curso seleccionado: ${context.courseName ?? dto.courseId}. Selecciona el mismo curso al importar.`,
       ],
-      [`Curso seleccionado (valor para la columna curso): ${dto.courseId}`],
       [
         dto.type === 'students'
           ? 'Completa numero_lista, nombres, apellidos y curso en cada fila.'
-          : `Asignatura/módulo: ${subjectName}. No cambies este nombre.`,
+          : `Asignatura/módulo seleccionado: ${subjectName}.`,
+      ],
+      [
+        dto.type === 'academic'
+          ? 'El curso y la asignatura se seleccionan en la aplicación; no se repiten por estudiante. Las filas sin notas se omiten.'
+          : 'Elimina las filas que no desees importar.',
+      ],
+      [
+        dto.type === 'academic'
+          ? 'Azul claro: notas ordinarias. Amarillo claro: recuperaciones.'
+          : 'Completa solamente las columnas que necesites importar.',
       ],
       ['Las celdas de notas vacías conservan los valores existentes.'],
+      [
+        'En la importación académica se ignoran las notas de períodos cerrados y las que no cambiaron.',
+      ],
       ['Las notas se validan con las mismas reglas del registro de calificaciones.'],
       [
         'Académicas: incluye al menos una nota de bloque por fila, también al cargar evaluaciones finales.',
@@ -768,19 +852,6 @@ export class ImportsService {
       recovery1Score: this.optionalNumber(row, `${key}_r1`),
       recovery2Score: this.optionalNumber(row, `${key}_r2`),
       specialScore: includeSpecial ? this.optionalNumber(row, `${key}_esp`) : undefined,
-    };
-  }
-
-  private toAcademicUpdateDto(dto: CreateAcademicGradeDto): UpdateAcademicGradeDto {
-    return {
-      p1: dto.p1,
-      rp1: dto.rp1,
-      p2: dto.p2,
-      rp2: dto.rp2,
-      p3: dto.p3,
-      rp3: dto.rp3,
-      p4: dto.p4,
-      rp4: dto.rp4,
     };
   }
 

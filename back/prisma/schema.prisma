@@ -20,6 +20,7 @@ model School {
   createdBy                 String?
   updatedBy                 String?
   academicGrades            AcademicGrade[]
+  academicPeriodControls    AcademicPeriodControl[]
   academicSubjectResults    AcademicSubjectResult[]
   auditLogs                 AuditLog[]
   courses                   Course[]
@@ -47,6 +48,7 @@ model SchoolYear {
   createdBy               String?
   updatedBy               String?
   academicGrades          AcademicGrade[]
+  academicPeriodControls  AcademicPeriodControl[]
   academicSubjectResults  AcademicSubjectResult[]
   courses                 Course[]
   importJobs              ImportJob[]
@@ -233,6 +235,28 @@ model AcademicGrade {
   @@index([courseId, subjectId])
   @@index([studentId])
   @@map("academic_grades")
+}
+
+model AcademicPeriodControl {
+  id           String     @id @default(uuid())
+  schoolId     String
+  schoolYearId String
+  p1Open       Boolean    @default(true)
+  rp1Open      Boolean    @default(true)
+  p2Open       Boolean    @default(true)
+  rp2Open      Boolean    @default(true)
+  p3Open       Boolean    @default(true)
+  rp3Open      Boolean    @default(true)
+  p4Open       Boolean    @default(true)
+  rp4Open      Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  updatedBy    String?
+  school       School     @relation(fields: [schoolId], references: [id])
+  schoolYear   SchoolYear @relation(fields: [schoolYearId], references: [id])
+
+  @@unique([schoolId, schoolYearId])
+  @@map("academic_period_controls")
 }
 
 model AcademicSubjectResult {

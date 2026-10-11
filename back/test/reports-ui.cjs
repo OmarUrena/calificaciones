@@ -2,6 +2,7 @@
 // API requests are mocked; this test never writes to the real backend.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
+const { seedUiSession } = require('./ui-session-fixture.cjs');
 
 const origin = 'http://localhost:3100';
 const year = { id: 'year', name: '2026-2027', isActive: true };
@@ -42,10 +43,9 @@ const students = [
 const pdf = Buffer.from('%PDF-1.4\n% CalifApp test\n');
 
 async function preparePage(role) {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, executablePath: process.env.UI_BROWSER_PATH });
   const context = await browser.newContext({ acceptDownloads: true });
-  await context.addCookies([{ name: 'califapp_token', value: 'test-only', url: origin }]);
-  await context.addInitScript(() => localStorage.setItem('califapp_token', 'test-only'));
+  await seedUiSession(context);
   const user = {
     id: 'user',
     fullName: 'Usuario de prueba',
@@ -85,6 +85,8 @@ async function testAdminDownloads() {
   try {
     await page.goto(`${origin}/reports?courseId=${titularCourse.id}`);
     await page.getByRole('button', { name: 'Generar boletines del curso' }).waitFor();
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll('select')].some((select) => select.value === 'course-titular'));
     assert.equal(await page.getByRole('combobox', { name: 'Curso' }).inputValue(), titularCourse.id);
     assert.equal(await page.getByRole('combobox', { name: 'Año escolar' }).inputValue(), year.id);
     assert.deepEqual(
@@ -119,8 +121,8 @@ async function testTeacherPermissions() {
     assert.equal(await courseButton.isEnabled(), true);
 
     await page.getByRole('combobox', { name: 'Curso' }).selectOption(otherCourse.id);
-    assert.equal(await courseButton.isDisabled(), true);
     await page.getByText('Solo el maestro titular de este curso').waitFor();
+    assert.equal(await courseButton.isDisabled(), true);
   } finally {
     await browser.close();
   }

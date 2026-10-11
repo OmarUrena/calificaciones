@@ -2,6 +2,10 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma, SubjectStatus, SubjectType, UserRole } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
+import {
+  ACADEMIC_PERIOD_FIELDS,
+  AcademicPeriodControlsService,
+} from '../academic-period-controls/academic-period-controls.service';
 import { PermissionsService } from '../common/services/permissions.service';
 import { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import { rethrowKnownPrismaError } from '../common/utils/prisma-error.util';
@@ -47,6 +51,7 @@ export class AcademicGradesService {
     private readonly prisma: PrismaService,
     private readonly permissionsService: PermissionsService,
     private readonly auditService: AuditService,
+    private readonly periodControls: AcademicPeriodControlsService,
   ) {}
 
   async findRegister(courseId: string, subjectId: string, user: AuthenticatedUser) {
@@ -66,7 +71,7 @@ export class AcademicGradesService {
       user,
     );
 
-    const [subject, students, grades, results] = await Promise.all([
+    const [subject, students, grades, results, periodControls] = await Promise.all([
       this.prisma.subject.findUnique({ where: { id: subjectId } }),
       this.prisma.student.findMany({
         where: {
@@ -94,9 +99,10 @@ export class AcademicGradesService {
         },
         orderBy: { student: { listNumber: 'asc' } },
       }),
+      this.periodControls.findForYear(course.schoolYearId, user),
     ]);
 
-    return { course, subject, students, grades, results };
+    return { course, subject, students, grades, results, periodControls };
   }
 
   async findByCourseAndSubject(courseId: string, subjectId: string, user: AuthenticatedUser) {
@@ -136,15 +142,21 @@ export class AcademicGradesService {
     const pc = this.calculatePc(dto);
 
     try {
-      const grade = await this.prisma.academicGrade.create({
-        data: {
-          ...dto,
-          pc,
-          createdBy: user.id,
-          updatedBy: user.id,
-        },
+      const { grade, result } = await this.prisma.$transaction(async (tx) => {
+        await this.periodControls.lockYear(tx, dto.schoolId, dto.schoolYearId);
+        await this.periodControls.ensureFieldsOpen(
+          dto.schoolId,
+          dto.schoolYearId,
+          dto,
+          undefined,
+          tx,
+        );
+        const grade = await tx.academicGrade.create({
+          data: { ...dto, pc, createdBy: user.id, updatedBy: user.id },
+        });
+        const result = await this.recalculateResult(context, user.id, tx);
+        return { grade, result };
       });
-      const result = await this.recalculateResult(context, user.id);
       await this.auditService.logCreate({
         schoolId: grade.schoolId,
         userId: user.id,
@@ -176,24 +188,32 @@ export class AcademicGradesService {
 
     await this.validateAcademicSubjectForCourse(context, user);
 
-    const mergedScores = this.mergeScores(current, dto);
-    const pc = this.calculatePc(mergedScores);
-
-    const grade = await this.prisma.academicGrade.update({
-      where: { id },
-      data: {
-        ...dto,
-        pc,
-        updatedBy: user.id,
-      },
+    const { grade, result, previous } = await this.prisma.$transaction(async (tx) => {
+      await this.periodControls.lockYear(tx, current.schoolId, current.schoolYearId);
+      const previous = await tx.academicGrade.findUnique({ where: { id } });
+      if (!previous) throw new NotFoundException('Academic grade not found.');
+      await this.periodControls.ensureFieldsOpen(
+        current.schoolId,
+        current.schoolYearId,
+        dto,
+        previous,
+        tx,
+      );
+      const mergedScores = this.mergeScores(previous, dto);
+      const pc = this.calculatePc(mergedScores);
+      const grade = await tx.academicGrade.update({
+        where: { id },
+        data: { ...dto, pc, updatedBy: user.id },
+      });
+      const result = await this.recalculateResult(context, user.id, tx);
+      return { grade, result, previous };
     });
-    const result = await this.recalculateResult(context, user.id);
     await this.auditService.logUpdate({
       schoolId: grade.schoolId,
       userId: user.id,
       entity: 'AcademicGrade',
       entityId: grade.id,
-      oldValue: current,
+      oldValue: previous,
       newValue: { grade, result },
     });
 
@@ -212,6 +232,96 @@ export class AcademicGradesService {
       successRows: items.length,
       items,
     };
+  }
+
+  async saveImportedBlocks(dtos: CreateAcademicGradeDto[], user: AuthenticatedUser) {
+    if (dtos.length === 0) return;
+    const context = await this.validateCreateContext(dtos[0], user, false);
+    for (const dto of dtos.slice(1)) {
+      if (
+        dto.schoolId !== context.schoolId ||
+        dto.schoolYearId !== context.schoolYearId ||
+        dto.courseId !== context.courseId ||
+        dto.studentId !== context.studentId ||
+        dto.subjectId !== context.subjectId
+      ) {
+        throw new BadRequestException(
+          'Los bloques importados deben pertenecer al mismo estudiante y asignatura.',
+        );
+      }
+    }
+
+    const changes = await this.prisma.$transaction(async (tx) => {
+      await this.periodControls.lockYear(tx, context.schoolId, context.schoolYearId);
+      const control = await tx.academicPeriodControl.findUnique({
+        where: {
+          schoolId_schoolYearId: {
+            schoolId: context.schoolId,
+            schoolYearId: context.schoolYearId,
+          },
+        },
+      });
+      const pending = [];
+      for (const dto of dtos) {
+        const previous = await tx.academicGrade.findUnique({
+          where: {
+            schoolId_schoolYearId_studentId_subjectId_blockNumber: {
+              schoolId: dto.schoolId,
+              schoolYearId: dto.schoolYearId,
+              studentId: dto.studentId,
+              subjectId: dto.subjectId,
+              blockNumber: dto.blockNumber,
+            },
+          },
+        });
+        const changedScores: UpdateAcademicGradeDto = {};
+        for (const field of ACADEMIC_PERIOD_FIELDS) {
+          const value = dto[field];
+          if (value === undefined || control?.[`${field}Open`] === false) continue;
+          const current = previous?.[field];
+          if (current !== null && current !== undefined && Number(current) === value) continue;
+          changedScores[field] = value;
+        }
+        if (Object.keys(changedScores).length === 0) continue;
+
+        const scores = previous ? this.mergeScores(previous, changedScores) : changedScores;
+        const pc = this.calculatePc(scores);
+        pending.push({ blockNumber: dto.blockNumber, changedScores, previous, pc });
+      }
+      const changes = [];
+      for (const { blockNumber, changedScores, previous, pc } of pending) {
+        const grade = previous
+          ? await tx.academicGrade.update({
+              where: { id: previous.id },
+              data: { ...changedScores, pc, updatedBy: user.id },
+            })
+          : await tx.academicGrade.create({
+              data: {
+                ...context,
+                blockNumber,
+                ...changedScores,
+                pc,
+                createdBy: user.id,
+                updatedBy: user.id,
+              },
+            });
+        changes.push({ previous, grade });
+      }
+      const result = changes.length ? await this.recalculateResult(context, user.id, tx) : null;
+      return { changes, result };
+    });
+
+    for (const { previous, grade } of changes.changes) {
+      const entry = {
+        schoolId: context.schoolId,
+        userId: user.id,
+        entity: 'AcademicGrade',
+        entityId: grade.id,
+        newValue: { grade, result: changes.result },
+      };
+      if (previous) await this.auditService.logUpdate({ ...entry, oldValue: previous });
+      else await this.auditService.logCreate(entry);
+    }
   }
 
   async recalculate(studentId: string, subjectId: string, user: AuthenticatedUser) {
@@ -325,8 +435,9 @@ export class AcademicGradesService {
   private async validateCreateContext(
     dto: CreateAcademicGradeDto,
     user: AuthenticatedUser,
+    validateScores = true,
   ): Promise<AcademicContext> {
-    this.validateScoreRules(dto);
+    if (validateScores) this.validateScoreRules(dto);
 
     const student = await this.prisma.student.findFirst({
       where: {
@@ -425,8 +536,12 @@ export class AcademicGradesService {
     return context;
   }
 
-  private async recalculateResult(context: AcademicContext, userId: string) {
-    const grades = await this.prisma.academicGrade.findMany({
+  private async recalculateResult(
+    context: AcademicContext,
+    userId: string,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const grades = await client.academicGrade.findMany({
       where: {
         schoolId: context.schoolId,
         schoolYearId: context.schoolYearId,
@@ -451,7 +566,7 @@ export class AcademicGradesService {
       ? this.roundInteger(this.average(pcs))
       : null;
 
-    const current = await this.prisma.academicSubjectResult.findUnique({
+    const current = await client.academicSubjectResult.findUnique({
       where: {
         schoolId_schoolYearId_studentId_subjectId: {
           schoolId: context.schoolId,
@@ -469,7 +584,7 @@ export class AcademicGradesService {
       ce: current?.ce ?? null,
     });
 
-    return this.prisma.academicSubjectResult.upsert({
+    return client.academicSubjectResult.upsert({
       where: {
         schoolId_schoolYearId_studentId_subjectId: {
           schoolId: context.schoolId,
