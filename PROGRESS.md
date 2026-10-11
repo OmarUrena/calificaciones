@@ -1,5 +1,10 @@
 # PROGRESS.md
 
+# Avance del 2026-10-10: generación de Prisma en despliegues
+
+- El backend ejecuta `prisma generate` en `postinstall` y antes de `nest build`, para regenerar el cliente desde el esquema actual incluso con dependencias cacheadas por Vercel. Corrige la ausencia de `academicPeriodControl` en los tipos del cliente durante la compilación.
+- Este ajuste genera código y no ejecuta migraciones ni modifica la base de datos.
+
 # Avance del 2026-10-09: sesiones e inactividad
 
 - La interfaz usa la sesión de Supabase como única fuente de token: cada petición obtiene el token vigente, incluso tras recarga o renovación. Se retiraron la copia manual en `localStorage` y la cookie `califapp_token`, junto con el `proxy` que solo comprobaba su presencia.
