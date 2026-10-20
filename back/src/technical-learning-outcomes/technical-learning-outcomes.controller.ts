@@ -5,6 +5,10 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import { CreateTechnicalLearningOutcomeDto } from './dto/create-technical-learning-outcome.dto';
+import {
+  CreateLearningOutcomesBatchDto,
+  UpdateLearningOutcomeWeightsDto,
+} from './dto/save-learning-outcomes.dto';
 import { UpdateTechnicalLearningOutcomeDto } from './dto/update-technical-learning-outcome.dto';
 import { TechnicalLearningOutcomesService } from './technical-learning-outcomes.service';
 
@@ -18,6 +22,22 @@ export class TechnicalLearningOutcomesController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
   create(@Body() dto: CreateTechnicalLearningOutcomeDto, @CurrentUser() user: AuthenticatedUser) {
     return this.technicalLearningOutcomesService.create(dto, user);
+  }
+
+  @Post('batch')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  createBatch(@Body() dto: CreateLearningOutcomesBatchDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.technicalLearningOutcomesService.createBatch(dto, user);
+  }
+
+  @Patch('subject/:subjectId/weights')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  updateWeights(
+    @Param('subjectId') subjectId: string,
+    @Body() dto: UpdateLearningOutcomeWeightsDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.technicalLearningOutcomesService.updateWeights(subjectId, dto, user);
   }
 
   @Get('subject/:subjectId')
