@@ -7,7 +7,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { ClipboardList, Loader2, Pencil, Plus, ToggleLeft, ToggleRight } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -39,7 +39,10 @@ const EMPTY_TEACHERS: Teacher[] = [];
 
 export default function AssignmentsPage() {
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const router = useRouter();
   const selectedTeacherId = searchParams.get("teacherId") ?? "";
+  const selectedCourseId = searchParams.get("courseId") ?? "";
   const { data: user } = useCurrentUser();
   const { data: assignments = EMPTY_ASSIGNMENTS, isLoading } = useTeacherAssignments();
   const { data: courses = EMPTY_COURSES } = useCourses();
@@ -53,13 +56,35 @@ export default function AssignmentsPage() {
   const [editingAssignment, setEditingAssignment] = useState<TeacherAssignment | null>(null);
 
   const canManageAssignments = user?.role === "ADMIN";
+  const hasFilters = Boolean(selectedTeacherId || selectedCourseId);
   const filteredAssignments = useMemo(
     () =>
-      selectedTeacherId
-        ? assignments.filter((assignment) => assignment.teacherId === selectedTeacherId)
-        : assignments,
-    [assignments, selectedTeacherId],
+      assignments.filter(
+        (assignment) =>
+          (!selectedTeacherId || assignment.teacherId === selectedTeacherId) &&
+          (!selectedCourseId || assignment.courseId === selectedCourseId),
+      ),
+    [assignments, selectedTeacherId, selectedCourseId],
   );
+
+  function updateFilter(key: "teacherId" | "courseId", value: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (value) {
+      params.set(key, value);
+    } else {
+      params.delete(key);
+    }
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }
+
+  function clearFilters() {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("teacherId");
+    params.delete("courseId");
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }
 
   const openCreateForm = useCallback(() => {
     setEditingAssignment(null);
@@ -255,13 +280,55 @@ export default function AssignmentsPage() {
         </div>
       ) : null}
 
-      {selectedTeacherId ? (
-        <div className="admin-card">
-          <p className="text-base text-institutional-gray-dark">
-            Mostrando asignaciones del maestro seleccionado.
-          </p>
+      <div className="admin-card space-y-4">
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="form-field" htmlFor="assignment-course-filter">
+            <span className="form-label">Curso</span>
+            <select
+              id="assignment-course-filter"
+              className="form-control"
+              value={selectedCourseId}
+              onChange={(event) => updateFilter("courseId", event.target.value)}
+            >
+              <option value="">Todos los cursos</option>
+              {courses.map((course) => (
+                <option key={course.id} value={course.id}>
+                  {course.name}
+                  {course.schoolYear?.name ? ` (${course.schoolYear.name})` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="form-field" htmlFor="assignment-teacher-filter">
+            <span className="form-label">Maestro</span>
+            <select
+              id="assignment-teacher-filter"
+              className="form-control"
+              value={selectedTeacherId}
+              onChange={(event) => updateFilter("teacherId", event.target.value)}
+            >
+              <option value="">Todos los maestros</option>
+              {teachers.map((teacher) => (
+                <option key={teacher.id} value={teacher.id}>
+                  {teacher.name}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
-      ) : null}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <p className="text-sm text-institutional-gray" role="status">
+            {isLoading
+              ? "Cargando asignaciones..."
+              : `Mostrando ${filteredAssignments.length} de ${assignments.length} asignaciones.`}
+          </p>
+          {hasFilters ? (
+            <Button variant="outline" onClick={clearFilters}>
+              Limpiar filtros
+            </Button>
+          ) : null}
+        </div>
+      </div>
 
       {isFormOpen ? (
         <AssignmentForm
@@ -287,10 +354,12 @@ export default function AssignmentsPage() {
           <div className="flex flex-col items-center justify-center p-8 text-center">
             <ClipboardList className="mb-3 h-10 w-10 text-institutional-gray" aria-hidden="true" />
             <p className="text-lg font-medium text-institutional-gray-dark">
-              No hay asignaciones registradas
+              {hasFilters ? "No hay asignaciones para estos filtros" : "No hay asignaciones registradas"}
             </p>
             <p className="text-base text-institutional-gray">
-              Crea la primera asignacion docente para habilitar permisos de maestros.
+              {hasFilters
+                ? "Selecciona otro curso o maestro, o limpia los filtros para ver todas las asignaciones."
+                : "Crea la primera asignacion docente para habilitar permisos de maestros."}
             </p>
           </div>
         ) : (
