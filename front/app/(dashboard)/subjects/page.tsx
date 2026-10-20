@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { SubjectForm } from "@/components/forms/SubjectForm";
 import { Button } from "@/components/ui/button";
 import { useCurrentUser } from "@/hooks/use-current-user";
+import { useTechnicalLearningOutcomes } from "@/hooks/use-technical-learning-outcomes";
 import {
   useCreateSubject,
   useDeactivateSubject,
@@ -34,6 +35,13 @@ export default function SubjectsPage() {
   const deactivateSubject = useDeactivateSubject();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
+  const [search, setSearch] = useState("");
+
+  const searchTerm = normalizeSearchText(search.trim());
+  const filteredSubjects = useMemo(
+    () => subjects.filter((subject) => normalizeSearchText(subject.name).includes(searchTerm)),
+    [subjects, searchTerm],
+  );
 
   const canManageSubjects = user?.role === "ADMIN";
 
@@ -79,7 +87,12 @@ export default function SubjectsPage() {
         header: "Asignatura",
         accessorKey: "name",
         cell: ({ row }) => (
-          <span className="font-semibold text-institutional-gray-dark">{row.original.name}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-institutional-gray-dark">{row.original.name}</span>
+            {row.original.type === "TECHNICAL" ? (
+              <IncompleteOutcomesBadge subjectId={row.original.id} />
+            ) : null}
+          </div>
         ),
       },
       {
@@ -157,7 +170,7 @@ export default function SubjectsPage() {
 
   // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
-    data: subjects,
+    data: filteredSubjects,
     columns,
     getCoreRowModel: getCoreRowModel(),
   });
@@ -217,20 +230,48 @@ export default function SubjectsPage() {
         />
       ) : null}
 
+      <div className="admin-card space-y-4">
+        <label className="form-field" htmlFor="subject-name-search">
+          <span className="form-label">Buscar por nombre</span>
+          <input
+            id="subject-name-search"
+            className="form-control"
+            type="search"
+            placeholder="Escribe el nombre de una asignatura"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </label>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <p className="text-sm text-institutional-gray" role="status">
+            {isLoading
+              ? "Cargando asignaturas..."
+              : `Mostrando ${filteredSubjects.length} de ${subjects.length} asignaturas.`}
+          </p>
+          {search ? (
+            <Button variant="outline" onClick={() => setSearch("")}>
+              Limpiar búsqueda
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
       <div className="admin-card overflow-hidden p-0">
         {isLoading ? (
           <div className="flex items-center gap-2 p-6 text-base text-institutional-gray">
             <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
             Cargando asignaturas...
           </div>
-        ) : subjects.length === 0 ? (
+        ) : filteredSubjects.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-8 text-center">
             <BookOpen className="mb-3 h-10 w-10 text-institutional-gray" aria-hidden="true" />
             <p className="text-lg font-medium text-institutional-gray-dark">
-              No hay asignaturas registradas
+              {searchTerm ? "No se encontraron asignaturas" : "No hay asignaturas registradas"}
             </p>
             <p className="text-base text-institutional-gray">
-              Crea la primera asignatura para comenzar.
+              {searchTerm
+                ? "Prueba con otro nombre o limpia la búsqueda para ver todas las asignaturas."
+                : "Crea la primera asignatura para comenzar."}
             </p>
           </div>
         ) : (
@@ -268,6 +309,33 @@ export default function SubjectsPage() {
         )}
       </div>
     </section>
+  );
+}
+
+function normalizeSearchText(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es");
+}
+
+function IncompleteOutcomesBadge({ subjectId }: { subjectId: string }) {
+  const { data: outcomes, isError } = useTechnicalLearningOutcomes(subjectId);
+
+  if (isError) {
+    return <span className="text-sm text-institutional-gray">No se pudieron verificar los RA.</span>;
+  }
+
+  if (!outcomes) return null;
+
+  const total = outcomes.reduce(
+    (sum, outcome) => sum + (outcome.isActive ? Math.round(Number(outcome.weight) * 100) : 0),
+    0,
+  ) / 100;
+
+  if (total >= 100) return null;
+
+  return (
+    <span className="status-badge status-completiva">
+      RA incompletos ({total.toLocaleString("es")} / 100)
+    </span>
   );
 }
 
