@@ -6,7 +6,15 @@ import {
   type ColumnDef,
   useReactTable,
 } from "@tanstack/react-table";
-import { BookOpen, ClipboardList, Loader2, Pencil, Plus, ToggleLeft, ToggleRight } from "lucide-react";
+import {
+  BookOpen,
+  ClipboardList,
+  Loader2,
+  Pencil,
+  Plus,
+  ToggleLeft,
+  ToggleRight,
+} from "lucide-react";
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -14,7 +22,7 @@ import { toast } from "sonner";
 import { SubjectForm } from "@/components/forms/SubjectForm";
 import { Button } from "@/components/ui/button";
 import { useCurrentUser } from "@/hooks/use-current-user";
-import { useTechnicalLearningOutcomes } from "@/hooks/use-technical-learning-outcomes";
+import { useTechnicalLearningOutcomesForSubjects } from "@/hooks/use-technical-learning-outcomes";
 import {
   useCreateSubject,
   useDeactivateSubject,
@@ -27,6 +35,9 @@ import type { Subject, SubjectFormValues, SubjectType } from "@/types/subject";
 
 const EMPTY_SUBJECTS: Subject[] = [];
 
+type SubjectFilter = "" | SubjectType | "INCOMPLETE_RA";
+type OutcomeStatus = { total?: number; isError: boolean };
+
 export default function SubjectsPage() {
   const { data: user } = useCurrentUser();
   const { data: subjects = EMPTY_SUBJECTS, isLoading } = useSubjects();
@@ -36,11 +47,65 @@ export default function SubjectsPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   const [search, setSearch] = useState("");
+  const [subjectFilter, setSubjectFilter] = useState<SubjectFilter>("");
+  const technicalSubjectIds = useMemo(
+    () =>
+      subjects
+        .filter((subject) => subject.type === "TECHNICAL")
+        .map((subject) => subject.id),
+    [subjects],
+  );
+  const outcomeQueries =
+    useTechnicalLearningOutcomesForSubjects(technicalSubjectIds);
+  const outcomeStatuses = useMemo(
+    () =>
+      new Map<string, OutcomeStatus>(
+        technicalSubjectIds.map((id, index) => {
+          const query = outcomeQueries[index];
+          const total = query.data?.reduce(
+            (sum, outcome) =>
+              sum +
+              (outcome.isActive ? Math.round(Number(outcome.weight) * 100) : 0),
+            0,
+          );
+          return [
+            id,
+            {
+              total: total === undefined ? undefined : total / 100,
+              isError: query.isError,
+            },
+          ];
+        }),
+      ),
+    [technicalSubjectIds, outcomeQueries],
+  );
 
   const searchTerm = normalizeSearchText(search.trim());
+  const hasFilters = Boolean(searchTerm || subjectFilter);
+  const isCheckingOutcomes =
+    subjectFilter === "INCOMPLETE_RA" &&
+    outcomeQueries.some((query) => query.isPending);
+  const hasOutcomesError =
+    subjectFilter === "INCOMPLETE_RA" &&
+    outcomeQueries.some((query) => query.isError);
+  const isLoadingResults = isLoading || isCheckingOutcomes;
   const filteredSubjects = useMemo(
-    () => subjects.filter((subject) => normalizeSearchText(subject.name).includes(searchTerm)),
-    [subjects, searchTerm],
+    () =>
+      subjects.filter((subject) => {
+        if (!normalizeSearchText(subject.name).includes(searchTerm))
+          return false;
+        if (subjectFilter === "INCOMPLETE_RA") {
+          const status = outcomeStatuses.get(subject.id);
+          return (
+            subject.type === "TECHNICAL" &&
+            !status?.isError &&
+            status?.total !== undefined &&
+            status.total < 100
+          );
+        }
+        return !subjectFilter || subject.type === subjectFilter;
+      }),
+    [subjects, searchTerm, subjectFilter, outcomeStatuses],
   );
 
   const canManageSubjects = user?.role === "ADMIN";
@@ -63,7 +128,9 @@ export default function SubjectsPage() {
   const handleToggleActive = useCallback(
     async (subject: Subject) => {
       const action = subject.isActive ? "desactivar" : "activar";
-      const confirmed = window.confirm(`Deseas ${action} la asignatura ${subject.name}?`);
+      const confirmed = window.confirm(
+        `Deseas ${action} la asignatura ${subject.name}?`,
+      );
       if (!confirmed) return;
 
       try {
@@ -71,7 +138,10 @@ export default function SubjectsPage() {
           await deactivateSubject.mutateAsync(subject.id);
           toast.success("Asignatura desactivada.");
         } else {
-          await updateSubject.mutateAsync({ id: subject.id, values: { isActive: true } });
+          await updateSubject.mutateAsync({
+            id: subject.id,
+            values: { isActive: true },
+          });
           toast.success("Asignatura activada.");
         }
       } catch (error) {
@@ -88,9 +158,13 @@ export default function SubjectsPage() {
         accessorKey: "name",
         cell: ({ row }) => (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-semibold text-institutional-gray-dark">{row.original.name}</span>
+            <span className="font-semibold text-institutional-gray-dark">
+              {row.original.name}
+            </span>
             {row.original.type === "TECHNICAL" ? (
-              <IncompleteOutcomesBadge subjectId={row.original.id} />
+              <IncompleteOutcomesBadge
+                status={outcomeStatuses.get(row.original.id)}
+              />
             ) : null}
           </div>
         ),
@@ -128,7 +202,11 @@ export default function SubjectsPage() {
           return (
             <div className="flex flex-wrap gap-2">
               {canManageSubjects ? (
-                <Button size="sm" variant="outline" onClick={() => openEditForm(subject)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => openEditForm(subject)}
+                >
                   <Pencil aria-hidden="true" />
                   Editar
                 </Button>
@@ -141,7 +219,9 @@ export default function SubjectsPage() {
               ) : null}
               {canManageSubjects ? (
                 <Button
-                  disabled={deactivateSubject.isPending || updateSubject.isPending}
+                  disabled={
+                    deactivateSubject.isPending || updateSubject.isPending
+                  }
                   size="sm"
                   variant="outline"
                   onClick={() => handleToggleActive(subject)}
@@ -165,6 +245,7 @@ export default function SubjectsPage() {
       handleToggleActive,
       openEditForm,
       updateSubject.isPending,
+      outcomeStatuses,
     ],
   );
 
@@ -231,46 +312,95 @@ export default function SubjectsPage() {
       ) : null}
 
       <div className="admin-card space-y-4">
-        <label className="form-field" htmlFor="subject-name-search">
-          <span className="form-label">Buscar por nombre</span>
-          <input
-            id="subject-name-search"
-            className="form-control"
-            type="search"
-            placeholder="Escribe el nombre de una asignatura"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </label>
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="form-field" htmlFor="subject-name-search">
+            <span className="form-label">Buscar por nombre</span>
+            <input
+              id="subject-name-search"
+              className="form-control"
+              type="search"
+              placeholder="Escribe el nombre de una asignatura"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </label>
+          <label className="form-field" htmlFor="subject-filter">
+            <span className="form-label">Filtrar asignaturas</span>
+            <select
+              id="subject-filter"
+              className="form-control"
+              value={subjectFilter}
+              onChange={(event) =>
+                setSubjectFilter(event.target.value as SubjectFilter)
+              }
+            >
+              <option value="">Todas las asignaturas</option>
+              <option value="ACADEMIC">Académicas</option>
+              <option value="TECHNICAL">Técnicas</option>
+              <option value="INCOMPLETE_RA">Con RA incompletos</option>
+            </select>
+          </label>
+        </div>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <p className="text-sm text-institutional-gray" role="status">
-            {isLoading
+            {isLoadingResults
               ? "Cargando asignaturas..."
-              : `Mostrando ${filteredSubjects.length} de ${subjects.length} asignaturas.`}
+              : hasOutcomesError
+                ? "No se pudo verificar la configuración de los RA."
+                : `Mostrando ${filteredSubjects.length} de ${subjects.length} asignaturas.`}
           </p>
-          {search ? (
-            <Button variant="outline" onClick={() => setSearch("")}>
-              Limpiar búsqueda
+          {search || subjectFilter ? (
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSearch("");
+                setSubjectFilter("");
+              }}
+            >
+              Limpiar filtros
             </Button>
           ) : null}
         </div>
       </div>
 
       <div className="admin-card overflow-hidden p-0">
-        {isLoading ? (
+        {isLoadingResults ? (
           <div className="flex items-center gap-2 p-6 text-base text-institutional-gray">
             <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
             Cargando asignaturas...
           </div>
+        ) : hasOutcomesError ? (
+          <div className="space-y-4 p-6">
+            <p className="text-base text-destructive" role="alert">
+              No se pudieron verificar los RA de algunas asignaturas. Vuelve a
+              intentar para ver la lista completa.
+            </p>
+            <Button
+              variant="outline"
+              disabled={outcomeQueries.some((query) => query.isFetching)}
+              onClick={() => {
+                outcomeQueries
+                  .filter((query) => query.isError)
+                  .forEach((query) => void query.refetch());
+              }}
+            >
+              Reintentar
+            </Button>
+          </div>
         ) : filteredSubjects.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-8 text-center">
-            <BookOpen className="mb-3 h-10 w-10 text-institutional-gray" aria-hidden="true" />
+            <BookOpen
+              className="mb-3 h-10 w-10 text-institutional-gray"
+              aria-hidden="true"
+            />
             <p className="text-lg font-medium text-institutional-gray-dark">
-              {searchTerm ? "No se encontraron asignaturas" : "No hay asignaturas registradas"}
+              {hasFilters
+                ? "No se encontraron asignaturas"
+                : "No hay asignaturas registradas"}
             </p>
             <p className="text-base text-institutional-gray">
-              {searchTerm
-                ? "Prueba con otro nombre o limpia la búsqueda para ver todas las asignaturas."
+              {hasFilters
+                ? "Prueba con otro nombre o limpia los filtros para ver todas las asignaturas."
                 : "Crea la primera asignatura para comenzar."}
             </p>
           </div>
@@ -282,12 +412,17 @@ export default function SubjectsPage() {
                   <tr key={headerGroup.id}>
                     {headerGroup.headers.map((header) => (
                       <th
-                        className={header.column.id === "actions" ? "w-96" : undefined}
+                        className={
+                          header.column.id === "actions" ? "w-96" : undefined
+                        }
                         key={header.id}
                       >
                         {header.isPlaceholder
                           ? null
-                          : flexRender(header.column.columnDef.header, header.getContext())}
+                          : flexRender(
+                              header.column.columnDef.header,
+                              header.getContext(),
+                            )}
                       </th>
                     ))}
                   </tr>
@@ -298,7 +433,10 @@ export default function SubjectsPage() {
                   <tr key={row.id}>
                     {row.getVisibleCells().map((cell) => (
                       <td key={cell.id}>
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext(),
+                        )}
                       </td>
                     ))}
                   </tr>
@@ -313,35 +451,39 @@ export default function SubjectsPage() {
 }
 
 function normalizeSearchText(value: string) {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es");
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("es");
 }
 
-function IncompleteOutcomesBadge({ subjectId }: { subjectId: string }) {
-  const { data: outcomes, isError } = useTechnicalLearningOutcomes(subjectId);
-
-  if (isError) {
-    return <span className="text-sm text-institutional-gray">No se pudieron verificar los RA.</span>;
+function IncompleteOutcomesBadge({ status }: { status?: OutcomeStatus }) {
+  if (status?.isError) {
+    return (
+      <span className="text-sm text-institutional-gray">
+        No se pudieron verificar los RA.
+      </span>
+    );
   }
 
-  if (!outcomes) return null;
-
-  const total = outcomes.reduce(
-    (sum, outcome) => sum + (outcome.isActive ? Math.round(Number(outcome.weight) * 100) : 0),
-    0,
-  ) / 100;
-
-  if (total >= 100) return null;
+  if (status?.total === undefined || status.total >= 100) return null;
 
   return (
     <span className="status-badge status-completiva">
-      RA incompletos ({total.toLocaleString("es")} / 100)
+      RA incompletos ({status.total.toLocaleString("es")} / 100)
     </span>
   );
 }
 
 function SubjectTypeBadge({ type }: { type: SubjectType }) {
   return (
-    <span className={type === "TECHNICAL" ? "status-badge status-approved" : "status-badge status-pending"}>
+    <span
+      className={
+        type === "TECHNICAL"
+          ? "status-badge status-approved"
+          : "status-badge status-pending"
+      }
+    >
       {type === "TECHNICAL" ? "Tecnica" : "Academica"}
     </span>
   );
@@ -368,5 +510,9 @@ function ActionLink({
 }
 
 function showError(error: unknown) {
-  toast.error(error instanceof ApiError ? error.message : "No se pudo completar la accion.");
+  toast.error(
+    error instanceof ApiError
+      ? error.message
+      : "No se pudo completar la accion.",
+  );
 }

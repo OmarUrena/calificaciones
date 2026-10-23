@@ -2,7 +2,9 @@
 
 import {
   type QueryClient,
+  type UseQueryResult,
   useMutation,
+  useQueries,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
@@ -26,14 +28,39 @@ function cacheOutcome(
   );
 }
 
-export function useTechnicalLearningOutcomes(subjectId?: string) {
-  return useQuery({
+function technicalLearningOutcomesQuery(subjectId?: string) {
+  return {
     queryKey: ["technical-learning-outcomes", subjectId],
     queryFn: () =>
       apiFetch<TechnicalLearningOutcome[]>(
         `/technical-learning-outcomes/subject/${subjectId}`,
       ),
     enabled: Boolean(subjectId),
+  };
+}
+
+export function useTechnicalLearningOutcomes(subjectId?: string) {
+  return useQuery(technicalLearningOutcomesQuery(subjectId));
+}
+
+function combineOutcomeQueries(
+  queries: UseQueryResult<TechnicalLearningOutcome[]>[],
+) {
+  return queries.map(({ data, isError, isPending, isFetching, refetch }) => ({
+    data,
+    isError,
+    isPending,
+    isFetching,
+    refetch,
+  }));
+}
+
+export function useTechnicalLearningOutcomesForSubjects(subjectIds: string[]) {
+  return useQueries({
+    queries: subjectIds.map((subjectId) =>
+      technicalLearningOutcomesQuery(subjectId),
+    ),
+    combine: combineOutcomeQueries,
   });
 }
 
