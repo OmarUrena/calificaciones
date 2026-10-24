@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
@@ -20,6 +25,7 @@ export class TeacherAssignmentsService {
   async create(dto: CreateTeacherAssignmentDto, user: AuthenticatedUser) {
     this.permissionsService.ensureCanAccessSchool(user, dto.schoolId);
     await this.validateAssignmentRelations(dto);
+    await this.ensureAssignmentIsUnique(dto);
 
     try {
       const assignment = await this.prisma.teacherAssignment.create({
@@ -39,7 +45,10 @@ export class TeacherAssignmentsService {
 
       return assignment;
     } catch (error) {
-      rethrowKnownPrismaError(error);
+      rethrowKnownPrismaError(
+        error,
+        'Ese curso ya tiene esa asignatura registrada en el año escolar seleccionado.',
+      );
     }
   }
 
@@ -66,13 +75,14 @@ export class TeacherAssignmentsService {
     const current = await this.findAccessibleById(id, user);
     const next = {
       schoolId: current.schoolId,
-      schoolYearId: current.schoolYearId,
+      schoolYearId: dto.schoolYearId ?? current.schoolYearId,
       teacherId: dto.teacherId ?? current.teacherId,
       subjectId: dto.subjectId ?? current.subjectId,
       courseId: dto.courseId ?? current.courseId,
     };
 
     await this.validateAssignmentRelations(next);
+    await this.ensureAssignmentIsUnique(next, id);
 
     try {
       const assignment = await this.prisma.teacherAssignment.update({
@@ -93,7 +103,10 @@ export class TeacherAssignmentsService {
 
       return assignment;
     } catch (error) {
-      rethrowKnownPrismaError(error);
+      rethrowKnownPrismaError(
+        error,
+        'Ese curso ya tiene esa asignatura registrada en el año escolar seleccionado.',
+      );
     }
   }
 
@@ -127,6 +140,39 @@ export class TeacherAssignmentsService {
 
     this.permissionsService.ensureCanAccessSchool(user, assignment.schoolId);
     return assignment;
+  }
+
+  private async ensureAssignmentIsUnique(
+    params: {
+      schoolId: string;
+      schoolYearId: string;
+      subjectId: string;
+      courseId: string;
+    },
+    currentId?: string,
+  ): Promise<void> {
+    const existing = await this.prisma.teacherAssignment.findFirst({
+      where: {
+        schoolId: params.schoolId,
+        schoolYearId: params.schoolYearId,
+        courseId: params.courseId,
+        subjectId: params.subjectId,
+        ...(currentId ? { NOT: { id: currentId } } : {}),
+      },
+      select: { isActive: true },
+    });
+
+    if (!existing) return;
+
+    if (existing.isActive) {
+      throw new ConflictException(
+        'Ese curso ya tiene esa asignatura asignada en el año escolar seleccionado.',
+      );
+    }
+
+    throw new ConflictException(
+      'Ya existe una asignación inactiva para ese curso y asignatura. Reactívala y selecciona el nuevo maestro.',
+    );
   }
 
   private async validateAssignmentRelations(params: {

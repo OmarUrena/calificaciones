@@ -3,6 +3,10 @@ import { IsBoolean, IsOptional, IsUUID } from 'class-validator';
 export class UpdateTeacherAssignmentDto {
   @IsOptional()
   @IsUUID()
+  schoolYearId?: string;
+
+  @IsOptional()
+  @IsUUID()
   teacherId?: string;
 
   @IsOptional()

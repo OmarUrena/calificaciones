@@ -1,5 +1,12 @@
 # PROGRESS.md
 
+# Avance del 2026-10-24
+
+- Corregida la edición de asignaciones docentes para aceptar y validar `schoolYearId`, evitando el error `property schoolYearId should not exist`.
+- Al crear una combinación que ya existe inactiva, la interfaz permite reasignarla al maestro seleccionado y reactivarla, conservando el registro y su auditoría.
+- El backend detecta duplicados activos e inactivos antes de escribir y devuelve mensajes específicos en español; se mantiene la unicidad por escuela, año escolar, curso y asignatura.
+- Agregadas 3 pruebas para el DTO de actualización, el cambio de año/curso/maestro y el conflicto con una asignación inactiva.
+
 # Avance del 2026-09-26
 
 - Agregada eliminación permanente de escuelas para SUPER_ADMIN desde `/schools`, separada de la activación/desactivación existente.

@@ -223,15 +223,34 @@ export default function AssignmentsPage() {
     const repeatedAssignment = assignments.find(
       (assignment) =>
         assignment.id !== editingAssignment?.id &&
-        assignment.isActive &&
-        values.isActive &&
         assignment.schoolYearId === values.schoolYearId &&
         assignment.courseId === values.courseId &&
         assignment.subjectId === values.subjectId,
     );
 
     if (repeatedAssignment) {
-      toast.error("Ese curso ya tiene esa asignatura asignada en el ano escolar seleccionado.");
+      if (editingAssignment || repeatedAssignment.isActive) {
+        toast.error(
+          "Ese curso ya tiene esa asignatura asignada en el año escolar seleccionado.",
+        );
+        return;
+      }
+
+      const confirmed = window.confirm(
+        "Ya existe una asignación inactiva para ese curso y asignatura. ¿Deseas reasignarla al maestro seleccionado y activarla?",
+      );
+      if (!confirmed) return;
+
+      try {
+        await updateAssignment.mutateAsync({
+          id: repeatedAssignment.id,
+          values: { ...values, isActive: true },
+        });
+        toast.success("Asignación reasignada y activada.");
+        closeForm();
+      } catch (error) {
+        showError(error);
+      }
       return;
     }
 
