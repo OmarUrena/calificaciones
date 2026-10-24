@@ -44,13 +44,14 @@ export function useUpdateSchool() {
   });
 }
 
-export function useDeactivateSchool() {
+export function useDeleteSchool() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: string) =>
-      apiFetch<School>(`/schools/${id}`, {
+    mutationFn: ({ id, password }: { id: string; password: string }) =>
+      apiFetch<{ id: string; name: string; deleted: true }>(`/schools/${id}`, {
         method: "DELETE",
+        body: JSON.stringify({ password }),
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: SCHOOLS_QUERY_KEY });

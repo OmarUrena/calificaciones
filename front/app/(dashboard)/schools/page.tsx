@@ -6,7 +6,7 @@ import {
   type ColumnDef,
   useReactTable,
 } from "@tanstack/react-table";
-import { Building2, Eye, Loader2, Pencil, Plus, Power } from "lucide-react";
+import { Building2, Eye, Loader2, Pencil, Plus, Power, Trash2, TriangleAlert } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -16,7 +16,7 @@ import { ApiError } from "@/lib/api";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import {
   useCreateSchool,
-  useDeactivateSchool,
+  useDeleteSchool,
   useSchools,
   useUpdateSchool,
 } from "@/hooks/use-schools";
@@ -27,10 +27,11 @@ export default function SchoolsPage() {
   const { data: schools = [], isLoading } = useSchools();
   const createSchool = useCreateSchool();
   const updateSchool = useUpdateSchool();
-  const deactivateSchool = useDeactivateSchool();
+  const deleteSchool = useDeleteSchool();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingSchool, setEditingSchool] = useState<School | null>(null);
   const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
+  const [schoolToDelete, setSchoolToDelete] = useState<School | null>(null);
 
   const openCreateForm = useCallback(() => {
     setEditingSchool(null);
@@ -55,20 +56,16 @@ export default function SchoolsPage() {
       if (!confirmed) return;
 
       try {
-        if (school.isActive) {
-          await deactivateSchool.mutateAsync(school.id);
-        } else {
-          await updateSchool.mutateAsync({
-            id: school.id,
-            values: { isActive: true },
-          });
-        }
+        await updateSchool.mutateAsync({
+          id: school.id,
+          values: { isActive: !school.isActive },
+        });
         toast.success(`Escuela ${school.isActive ? "desactivada" : "activada"}.`);
       } catch (error) {
         showError(error);
       }
     },
-    [deactivateSchool, updateSchool],
+    [updateSchool],
   );
 
   const canManageSchools = user?.role === "SUPER_ADMIN";
@@ -131,6 +128,10 @@ export default function SchoolsPage() {
                   <Button size="sm" variant="outline" onClick={() => handleDeactivate(school)}>
                     <Power aria-hidden="true" />
                     {school.isActive ? "Desactivar" : "Activar"}
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={() => setSchoolToDelete(school)}>
+                    <Trash2 aria-hidden="true" />
+                    Eliminar
                   </Button>
                 </>
               ) : null}
@@ -251,7 +252,97 @@ export default function SchoolsPage() {
       {selectedSchool ? (
         <SchoolDetails school={selectedSchool} onClose={() => setSelectedSchool(null)} />
       ) : null}
+
+      {schoolToDelete ? (
+        <DeleteSchoolDialog
+          school={schoolToDelete}
+          isDeleting={deleteSchool.isPending}
+          onCancel={() => setSchoolToDelete(null)}
+          onConfirm={async (password) => {
+            try {
+              await deleteSchool.mutateAsync({ id: schoolToDelete.id, password });
+              setSchoolToDelete(null);
+              if (selectedSchool?.id === schoolToDelete.id) setSelectedSchool(null);
+              toast.success("Escuela y todos sus registros eliminados.");
+            } catch (error) {
+              showError(error);
+            }
+          }}
+        />
+      ) : null}
     </section>
+  );
+}
+
+function DeleteSchoolDialog({
+  school,
+  isDeleting,
+  onCancel,
+  onConfirm,
+}: {
+  school: School;
+  isDeleting: boolean;
+  onCancel: () => void;
+  onConfirm: (password: string) => Promise<void>;
+}) {
+  const [password, setPassword] = useState("");
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="presentation">
+      <div
+        aria-describedby="delete-school-description"
+        aria-labelledby="delete-school-title"
+        aria-modal="true"
+        className="w-full max-w-lg rounded-lg border border-red-200 bg-white p-6 shadow-xl"
+        role="dialog"
+      >
+        <div className="flex items-start gap-3">
+          <TriangleAlert className="mt-1 h-6 w-6 shrink-0 text-red-700" aria-hidden="true" />
+          <div>
+            <h2 id="delete-school-title" className="text-xl font-semibold text-red-800">
+              Eliminar permanentemente {school.name}
+            </h2>
+            <p id="delete-school-description" className="mt-2 text-base text-institutional-gray-dark">
+              Esta acción eliminará la escuela y todos sus usuarios, maestros, cursos,
+              estudiantes, asignaturas, calificaciones, importaciones y auditoría. No se puede
+              deshacer.
+            </p>
+          </div>
+        </div>
+
+        <form
+          className="mt-5 space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void onConfirm(password);
+          }}
+        >
+          <label className="form-field block">
+            <span className="form-label">Contraseña del superadministrador</span>
+            <input
+              autoComplete="current-password"
+              autoFocus
+              className="form-control"
+              disabled={isDeleting}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              type="password"
+              value={password}
+            />
+          </label>
+
+          <div className="flex flex-wrap justify-end gap-3">
+            <Button disabled={isDeleting} type="button" variant="outline" onClick={onCancel}>
+              Cancelar
+            </Button>
+            <Button disabled={isDeleting || password.length === 0} type="submit" variant="destructive">
+              {isDeleting ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
+              {isDeleting ? "Eliminando..." : "Eliminar definitivamente"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 

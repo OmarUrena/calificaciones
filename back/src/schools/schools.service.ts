@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { UserRole } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
+import { AuthService } from '../auth/auth.service';
 import { PermissionsService } from '../common/services/permissions.service';
 import { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import { rethrowKnownPrismaError } from '../common/utils/prisma-error.util';
@@ -17,6 +18,7 @@ export class SchoolsService {
     private readonly permissionsService: PermissionsService,
     private readonly auditService: AuditService,
     private readonly logoStorage: SchoolLogoStorageService,
+    private readonly authService: AuthService,
   ) {}
 
   async create(dto: CreateSchoolDto, user: AuthenticatedUser) {
@@ -94,24 +96,31 @@ export class SchoolsService {
     }
   }
 
-  async remove(id: string, user: AuthenticatedUser) {
-    const oldValue = await this.findOne(id, user);
-    const school = await this.prisma.school.update({
-      where: { id },
-      data: {
-        isActive: false,
-        updatedBy: user.id,
-      },
-    });
-    await this.auditService.logDelete({
-      schoolId: school.id,
-      userId: user.id,
-      entity: 'School',
-      entityId: school.id,
-      oldValue,
+  async remove(id: string, password: string, user: AuthenticatedUser) {
+    const school = await this.findOne(id, user);
+    await this.authService.verifyPassword(user.email, password);
+
+    await this.prisma.$transaction(async (tx) => {
+      const bySchool = { schoolId: id };
+
+      await tx.auditLog.deleteMany({ where: bySchool });
+      await tx.importJob.deleteMany({ where: bySchool });
+      await tx.academicGrade.deleteMany({ where: bySchool });
+      await tx.academicSubjectResult.deleteMany({ where: bySchool });
+      await tx.technicalGrade.deleteMany({ where: bySchool });
+      await tx.technicalSubjectResult.deleteMany({ where: bySchool });
+      await tx.teacherAssignment.deleteMany({ where: bySchool });
+      await tx.technicalLearningOutcome.deleteMany({ where: bySchool });
+      await tx.student.deleteMany({ where: bySchool });
+      await tx.course.deleteMany({ where: bySchool });
+      await tx.subject.deleteMany({ where: bySchool });
+      await tx.schoolYear.deleteMany({ where: bySchool });
+      await tx.user.deleteMany({ where: bySchool });
+      await tx.teacher.deleteMany({ where: bySchool });
+      await tx.school.delete({ where: { id } });
     });
 
-    return school;
+    return { id: school.id, name: school.name, deleted: true };
   }
 
   async uploadLogo(id: string, file: SchoolLogoFile | undefined, user: AuthenticatedUser) {

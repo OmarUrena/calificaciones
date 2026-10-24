@@ -1,5 +1,12 @@
 # PROGRESS.md
 
+# Avance del 2026-09-26
+
+- Agregada eliminación permanente de escuelas para SUPER_ADMIN desde `/schools`, separada de la activación/desactivación existente.
+- La operación exige confirmar la contraseña actual del superadministrador contra Supabase Auth y nunca la persiste ni la incluye en auditoría.
+- El backend elimina en una transacción todos los registros dependientes de la escuela en calificaciones, resultados, asignaciones, RA, estudiantes, cursos, asignaturas, años escolares, usuarios, maestros, importaciones y auditoría, y finalmente elimina la escuela.
+- La interfaz advierte que la acción es irreversible, solicita la contraseña y evita envíos repetidos durante el proceso.
+
 # Avance del 2026-09-14
 
 - Corregido el acceso de docentes titulares a `/reports`: `GET /school-years`, `GET /courses` y `GET /students` ya aceptan el rol `TEACHER`. Para ese rol, cursos y estudiantes se limitan a los cursos donde el maestro vinculado es titular; las operaciones administrativas permanecen restringidas y los endpoints PDF conservan la validación final de titularidad.

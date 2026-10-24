@@ -35,6 +35,30 @@ export class AuthService {
     };
   }
 
+  async verifyPassword(email: string, password: string): Promise<void> {
+    const url = new URL('/auth/v1/token', this.supabaseUrl);
+    url.searchParams.set('grant_type', 'password');
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          apikey: this.supabaseAnonKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+        signal: AbortSignal.timeout(30000),
+      });
+
+      if (!response.ok) {
+        throw new UnauthorizedException('La contraseña es incorrecta.');
+      }
+    } catch (error) {
+      if (error instanceof UnauthorizedException) throw error;
+      throw new UnauthorizedException('No se pudo verificar la contraseña. Inténtalo de nuevo.');
+    }
+  }
+
   async validateBearerToken(token: string): Promise<AuthenticatedUser> {
     const authUser = await this.getSupabaseUser(token);
     const user = await this.findInternalUser(authUser);

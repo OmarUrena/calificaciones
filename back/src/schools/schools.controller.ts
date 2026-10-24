@@ -16,6 +16,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import { CreateSchoolDto } from './dto/create-school.dto';
+import { DeleteSchoolDto } from './dto/delete-school.dto';
 import { UpdateSchoolDto } from './dto/update-school.dto';
 import { SchoolsService } from './schools.service';
 import { MAX_SCHOOL_LOGO_BYTES, SchoolLogoFile } from './school-logo-storage.service';
@@ -67,7 +68,11 @@ export class SchoolsController {
 
   @Delete(':id')
   @Roles(UserRole.SUPER_ADMIN)
-  remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.schoolsService.remove(id, user);
+  remove(
+    @Param('id') id: string,
+    @Body() dto: DeleteSchoolDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.schoolsService.remove(id, dto.password, user);
   }
 }
