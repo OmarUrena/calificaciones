@@ -1,12 +1,7 @@
-import { Transform } from 'class-transformer';
-import { IsString, MinLength } from 'class-validator';
-import { IsUserEmail } from '../../common/decorators/is-user-email.decorator';
+import { IsEmail, IsString, MinLength } from 'class-validator';
 
 export class LoginDto {
-  @IsUserEmail()
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.trim().toLowerCase() : value,
-  )
+  @IsEmail()
   email: string;
 
   @IsString()

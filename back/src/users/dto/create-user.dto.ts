@@ -1,7 +1,14 @@
 import { UserRole } from '@prisma/client';
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsEnum, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
-import { IsUserEmail } from '../../common/decorators/is-user-email.decorator';
+import {
+  IsBoolean,
+  IsEmail,
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MinLength,
+} from 'class-validator';
 
 export class CreateUserDto {
   @IsOptional()
@@ -12,7 +19,7 @@ export class CreateUserDto {
   @IsUUID()
   teacherId?: string;
 
-  @IsUserEmail()
+  @IsEmail()
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim().toLowerCase() : value,
   )

@@ -1,7 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 
-import { ApiError, apiFetch, clearStoredToken, setStoredToken } from "@/lib/api";
-import { userEmailSchema } from "@/lib/user-email";
+import { apiFetch, clearStoredToken, setStoredToken } from "@/lib/api";
 import type { CurrentUser, LoginCredentials, UserRole } from "@/types/auth";
 
 const TOKEN_COOKIE_NAME = "califapp_token";
@@ -12,15 +11,11 @@ const supabase =
   supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
 export async function login(credentials: LoginCredentials) {
-  const email = userEmailSchema.safeParse(credentials.email);
-  if (!email.success) {
-    throw new ApiError(400, "VALIDATION_ERROR", "Introduce un correo válido.");
-  }
   if (!supabase) {
     throw new Error("Faltan NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY.");
   }
 
-  const { data, error } = await supabase.auth.signInWithPassword({ ...credentials, email: email.data });
+  const { data, error } = await supabase.auth.signInWithPassword(credentials);
 
   if (error || !data.session?.access_token) {
     throw new Error(error?.message ?? "No se pudo iniciar sesión con Supabase.");

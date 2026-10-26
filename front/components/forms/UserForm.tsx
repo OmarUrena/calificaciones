@@ -5,7 +5,6 @@ import { useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { userEmailSchema } from "@/lib/user-email";
 import type { School } from "@/types/school";
 import type { Teacher } from "@/types/teacher";
 import type { User, UserFormValues } from "@/types/user";
@@ -23,7 +22,7 @@ export function UserForm({ user, currentUserId, schools, teachers, users, onSave
   const self = user?.id === currentUserId;
   const schema = z.object({
     fullName: z.string().trim().min(1, "El nombre es obligatorio."),
-    email: userEmailSchema,
+    email: z.string().trim().toLowerCase().email("Introduce un correo válido."),
     role: z.enum(["SUPER_ADMIN", "ADMIN", "TEACHER"]),
     schoolId: z.string(), teacherId: z.string(), isActive: z.boolean(), password: z.string(),
   }).superRefine((values, context) => {
@@ -56,7 +55,7 @@ export function UserForm({ user, currentUserId, schools, teachers, users, onSave
         <input id="user-name" className="form-control" autoComplete="name" {...register("fullName")} aria-invalid={Boolean(errors.fullName)} />
         {errors.fullName && <p role="alert" className="form-error">{errors.fullName.message}</p>}</div>
       <div><label className="form-label" htmlFor="user-email">Correo electrónico</label>
-        <input id="user-email" className="form-control" autoComplete="off" type="text" inputMode="email" autoCapitalize="none" spellCheck={false} {...register("email")} aria-invalid={Boolean(errors.email)} />
+        <input id="user-email" className="form-control" autoComplete="off" type="email" {...register("email")} aria-invalid={Boolean(errors.email)} />
         {errors.email && <p role="alert" className="form-error">{errors.email.message}</p>}</div>
       <div><label className="form-label" htmlFor="user-role">Rol</label>
         <select id="user-role" className="form-control" disabled={self} {...register("role")}>
