@@ -6,10 +6,11 @@ const { ValidationPipe } = require('@nestjs/common');
 const { Workbook } = require('exceljs');
 const { ImportsController } = require('../dist/src/imports/imports.controller');
 const { ImportsService } = require('../dist/src/imports/imports.service');
+const { formatTechnicalTemplate } = require('../dist/src/imports/technical-template');
 
 test('HTTP template route returns an Excel file instead of looking up an import job', async () => {
   const workbook = new Workbook();
-  workbook.addWorksheet('Datos').addRow(['numero_lista', 'modulo', 'RA12', 'RA12_R1', 'RA12_R2', 'RA12_ESP']);
+  formatTechnicalTemplate(workbook.addWorksheet('Datos'), '6to A', 'Desarrollo web', [1], [{ code: 'RA12' }]);
   const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
   const generated = [];
   const lookedUp = [];
@@ -40,7 +41,10 @@ test('HTTP template route returns an Excel file instead of looking up an import 
     assert.match(response.headers.get('content-disposition'), /plantilla-technical.xlsx/);
     const downloaded = new Workbook();
     await downloaded.xlsx.load(Buffer.from(await response.arrayBuffer()));
-    assert.equal(downloaded.worksheets[0].getCell('C1').value, 'RA12');
+    assert.equal(downloaded.worksheets[0].getCell('B1').value, '6to A');
+    assert.equal(downloaded.worksheets[0].getCell('B2').value, 'Desarrollo web');
+    assert.equal(downloaded.worksheets[0].getCell('B4').value, 'RA12');
+    assert.equal(downloaded.worksheets[0].getCell('A5').value, 1);
     assert.equal(generated.length, 1);
     assert.equal(generated[0].dto.subjectId, query.get('subjectId'));
     assert.equal(generated[0].user.id, 'test-user');

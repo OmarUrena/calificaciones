@@ -140,11 +140,25 @@ test('technical template uses actual RA codes, including nonconsecutive codes', 
   const { service } = fixture();
   const workbook = new Workbook();
   await workbook.xlsx.load(await service.generateTemplate({ ...selection, type: 'technical' }, user));
-  assert.deepEqual(workbook.worksheets[0].getRow(1).values.slice(1),
-    ['numero_lista', 'modulo', 'RA1', 'RA1_R1', 'RA1_R2', 'RA1_ESP', 'RA3', 'RA3_R1', 'RA3_R2', 'RA3_ESP']);
+  const sheet = workbook.worksheets[0];
+  assert.equal(sheet.getCell('B1').value, '4to A');
+  assert.equal(sheet.getCell('B2').value, 'Matemática');
+  assert.equal(sheet.getCell('B3').value, 'RA1');
+  assert.equal(sheet.getCell('F3').value, 'RA3');
+  assert.deepEqual(sheet.getRow(4).values.slice(1),
+    ['numero_lista', 'RA1', 'RA1_R1', 'RA1_R2', 'RA1_ESP', 'RA3', 'RA3_R1', 'RA3_R2', 'RA3_ESP']);
+  assert.equal(sheet.getCell('A5').value, 1);
+  assert.equal(sheet.getCell('A6').value, 8);
+  assert.equal(sheet.getCell('B5').value, null);
+  assert.equal(sheet.getCell('E3').master.address, 'B3');
+  assert.equal(sheet.views[0].xSplit, 1);
+  assert.equal(sheet.views[0].ySplit, 4);
+  assert.notEqual(sheet.getCell('B3').fill.fgColor.argb, sheet.getCell('F3').fill.fgColor.argb);
+  assert.notEqual(sheet.getCell('B5').fill.fgColor.argb, sheet.getCell('F5').fill.fgColor.argb);
+  assert.equal(new Set(['B5', 'C5', 'D5', 'E5'].map((cell) => sheet.getCell(cell).fill.fgColor.argb)).size, 4);
 });
 
-for (const count of [1, 4, 8, 12]) {
+for (const count of [1, 4, 8, 12, 14]) {
   test(`technical template with ${count} RA can be filled and imported without losing columns`, async () => {
     const { service, prisma } = fixture();
     const outcomes = Array.from({ length: count }, (_, index) => ({
@@ -168,20 +182,20 @@ for (const count of [1, 4, 8, 12]) {
     const workbook = new Workbook();
     await workbook.xlsx.load(await service.generateTemplate({ ...selection, type: 'technical' }, user));
     const sheet = workbook.worksheets[0];
-    assert.equal(sheet.columnCount, 2 + count * 4);
-    // Keep one student and fill all four attempts for every configured RA.
-    sheet.spliceRows(3, 1);
+    assert.equal(sheet.columnCount, 1 + count * 4);
+    // Fill one student; the other unfilled student is automatically skipped.
     outcomes.forEach((outcome, index) => {
-      const column = 3 + index * 4;
-      assert.deepEqual([0, 1, 2, 3].map((offset) => sheet.getRow(1).getCell(column + offset).value),
+      const column = 2 + index * 4;
+      assert.deepEqual([0, 1, 2, 3].map((offset) => sheet.getRow(4).getCell(column + offset).value),
         [outcome.code, `${outcome.code}_R1`, `${outcome.code}_R2`, `${outcome.code}_ESP`]);
-      [1, 2, 3, 4].forEach((score, offset) => { sheet.getRow(2).getCell(column + offset).value = score; });
+      [1, 2, 3, 4].forEach((score, offset) => { sheet.getRow(5).getCell(column + offset).value = score; });
     });
     const result = await service.importTechnicalGrades({
       originalname: 'plantilla-completada.xlsx',
       buffer: Buffer.from(await workbook.xlsx.writeBuffer()),
     }, selection, user);
     assert.equal(result.successRows, 1);
+    assert.equal(result.totalRows, 1);
     assert.deepEqual(result.errors, []);
     assert.deepEqual(saved.map((dto) => [dto.learningOutcomeId, dto.ordinaryScore, dto.recovery1Score, dto.recovery2Score]),
       outcomes.map((outcome) => [outcome.id, 1, 2, 3]));
@@ -195,14 +209,78 @@ test('technical templates reflect RA configuration changes on each download', as
   prisma.technicalLearningOutcome.findMany = async () => outcomes;
   const first = new Workbook();
   await first.xlsx.load(await service.generateTemplate({ ...selection, type: 'technical' }, user));
-  assert.equal(first.worksheets[0].columnCount, 6);
+  assert.equal(first.worksheets[0].columnCount, 5);
   outcomes = [{ id: 'ra2', code: 'RA2', order: 1 }, { id: 'ra5', code: 'RA5', order: 2 }];
   const second = new Workbook();
   await second.xlsx.load(await service.generateTemplate({ ...selection, type: 'technical' }, user));
-  assert.deepEqual(second.worksheets[0].getRow(1).values.slice(1),
-    ['numero_lista', 'modulo', 'RA2', 'RA2_R1', 'RA2_R2', 'RA2_ESP', 'RA5', 'RA5_R1', 'RA5_R2', 'RA5_ESP']);
+  assert.deepEqual(second.worksheets[0].getRow(4).values.slice(1),
+    ['numero_lista', 'RA2', 'RA2_R1', 'RA2_R2', 'RA2_ESP', 'RA5', 'RA5_R1', 'RA5_R2', 'RA5_ESP']);
   outcomes = [];
   await assert.rejects(() => service.generateTemplate({ ...selection, type: 'technical' }, user), /no tiene RA activos/);
+});
+
+test('technical template supports fourteen independently colored groups and never truncates excess RA', async () => {
+  const { service, prisma } = fixture();
+  const outcomes = Array.from({ length: 14 }, (_, index) => ({ id: `ra-${index}`, code: `RA${index + 1}`, order: index + 1 }));
+  prisma.technicalLearningOutcome.findMany = async () => outcomes;
+  const workbook = new Workbook();
+  await workbook.xlsx.load(await service.generateTemplate({ ...selection, type: 'technical' }, user));
+  const sheet = workbook.worksheets[0];
+  assert.equal(sheet.columnCount, 57);
+  assert.equal(sheet.getRow(4).getCell(57).value, 'RA14_ESP');
+  assert.equal(new Set(outcomes.map((_, index) => sheet.getRow(3).getCell(2 + index * 4).fill.fgColor.argb)).size, 14);
+  outcomes.push({ id: 'ra-15', code: 'RA15', order: 15 });
+  await assert.rejects(() => service.generateTemplate({ ...selection, type: 'technical' }, user), /máximo de 14 RA/);
+});
+
+test('technical import validates the course and module in the template before writing grades', async () => {
+  const { service } = fixture();
+  const workbook = new Workbook();
+  await workbook.xlsx.load(await service.generateTemplate({ ...selection, type: 'technical' }, user));
+  const sheet = workbook.worksheets[0];
+  sheet.getCell('B5').value = 1;
+  sheet.getCell('B2').value = 'Otro módulo';
+  const file = async () => ({ originalname: 'plantilla.xlsx', buffer: Buffer.from(await workbook.xlsx.writeBuffer()) });
+  await assert.rejects(() => file().then((data) => service.importTechnicalGrades(data, selection, user)), /asignatura de la plantilla no coincide/);
+  sheet.getCell('B2').value = 'Matemática';
+  sheet.getCell('B1').value = 'Otro curso';
+  await assert.rejects(() => file().then((data) => service.importTechnicalGrades(data, selection, user)), /curso de la plantilla no coincide/);
+  sheet.getCell('B1').value = '4to A';
+  await assert.rejects(() => file().then((data) => service.importTechnicalGrades(data, { schoolYearId: 'year', courseId: 'course' }, user)), /Selecciona la asignatura/);
+});
+
+test('technical import keeps zero scores, preserves blank cells on update and reports the actual Excel row', async () => {
+  const { service, prisma } = fixture();
+  prisma.technicalGrade = { findUnique: async () => ({ id: 'grade' }) };
+  const updates = [];
+  service.technicalGradesService = { update: async (id, dto) => { updates.push({ id, dto }); return { grade: { id } }; } };
+  const workbook = new Workbook();
+  await workbook.xlsx.load(await service.generateTemplate({ ...selection, type: 'technical' }, user));
+  const sheet = workbook.worksheets[0];
+  sheet.getCell('B5').value = 0;
+  sheet.getCell('B6').value = 'invalid';
+  const result = await service.importTechnicalGrades({ originalname: 'plantilla.xlsx', buffer: Buffer.from(await workbook.xlsx.writeBuffer()) }, selection, user);
+  assert.equal(result.successRows, 1);
+  assert.equal(result.errorRows, 1);
+  assert.match(result.errors[0], /^Fila 6:/);
+  assert.equal(updates[0].dto.ordinaryScore, 0);
+  assert.equal(updates[0].dto.recovery1Score, undefined);
+  assert.equal(updates.length, 1);
+});
+
+test('legacy technical templates still import and empty technical templates do not create jobs', async () => {
+  const { service, prisma } = fixture();
+  prisma.technicalGrade = { findUnique: async () => null };
+  const saved = [];
+  service.technicalGradesService = { create: async (dto) => { saved.push(dto); return { grade: { id: 'grade' } }; } };
+  const legacy = await service.importTechnicalGrades(await excel([
+    ['numero_lista', 'modulo', 'RA1'], [1, 'Matemática', 2],
+  ]), selection, user);
+  assert.equal(legacy.successRows, 1);
+  assert.equal(saved[0].ordinaryScore, 2);
+  prisma.importJob.create = async () => assert.fail('Unfilled templates must not create an import job');
+  const buffer = await service.generateTemplate({ ...selection, type: 'technical' }, user);
+  await assert.rejects(() => service.importTechnicalGrades({ originalname: 'plantilla.xlsx', buffer }, selection, user), /no contiene calificaciones/);
 });
 
 test('student template matches importer columns', async () => {

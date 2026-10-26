@@ -22,6 +22,7 @@ import { ImportStudentsDto } from './dto/import-students.dto';
 import { UploadedExcelFile } from './types/uploaded-excel-file.type';
 import { ImportTemplateDto } from './dto/import-template.dto';
 import { formatAcademicTemplate } from './academic-template';
+import { formatTechnicalTemplate, MAX_TECHNICAL_TEMPLATE_OUTCOMES } from './technical-template';
 
 type ImportRow = Record<string, string | number | null>;
 
@@ -101,31 +102,7 @@ export class ImportsService {
       selectedSubjectName = selectedSubject.name;
     }
     const importedRows = await this.readRows(file);
-    const templateCourse = importedRows[0]?.plantilla_curso;
-    const templateSubject = importedRows[0]?.plantilla_asignatura;
-    if (
-      templateCourse &&
-      context.courseName &&
-      this.normalizeHeader(String(templateCourse)) !== this.normalizeHeader(context.courseName)
-    ) {
-      throw new BadRequestException(
-        'El curso de la plantilla no coincide con el curso seleccionado.',
-      );
-    }
-    if (templateSubject && !selectedSubjectName) {
-      throw new BadRequestException(
-        'Selecciona la asignatura de esta plantilla antes de importar.',
-      );
-    }
-    if (
-      templateSubject &&
-      selectedSubjectName &&
-      this.normalizeHeader(String(templateSubject)) !== this.normalizeHeader(selectedSubjectName)
-    ) {
-      throw new BadRequestException(
-        'La asignatura de la plantilla no coincide con la seleccionada.',
-      );
-    }
+    this.ensureTemplateSelection(importedRows, context, selectedSubjectName);
     const rows = importedRows.filter((row) =>
       Object.entries(row).some(
         ([key, value]) =>
@@ -167,11 +144,36 @@ export class ImportsService {
     user: AuthenticatedUser,
   ): Promise<ImportSummary> {
     const context = await this.resolveCourseContext(dto.schoolYearId, dto.courseId, user);
+    let selectedSubjectName: string | undefined;
     if (dto.subjectId) {
-      await this.resolveSelectedSubject(context, dto.subjectId, SubjectType.TECHNICAL, user);
+      const subject = await this.resolveSelectedSubject(
+        context,
+        dto.subjectId,
+        SubjectType.TECHNICAL,
+        user,
+      );
       context.subjectId = dto.subjectId;
+      selectedSubjectName = subject.name;
     }
-    const rows = await this.readRows(file);
+    const importedRows = await this.readRows(file);
+    this.ensureTemplateSelection(importedRows, context, selectedSubjectName);
+    const metadataColumns = new Set([
+      'fila',
+      'numero_lista',
+      'modulo',
+      'plantilla_curso',
+      'plantilla_asignatura',
+    ]);
+    const rows = importedRows.filter((row) =>
+      Object.entries(row).some(
+        ([key, value]) => !metadataColumns.has(key) && value !== null && value !== '',
+      ),
+    );
+    if (!rows.length) {
+      throw new BadRequestException(
+        'El archivo no contiene calificaciones técnicas para importar.',
+      );
+    }
     const job = await this.createJob({
       type: ImportType.TECHNICAL_GRADES,
       file,
@@ -345,12 +347,11 @@ export class ImportsService {
     user: AuthenticatedUser,
   ): Promise<void> {
     const student = await this.findStudentByListNumber(row, context);
-    const subject = await this.findSubjectByName(
-      row,
-      context.schoolId,
-      SubjectType.TECHNICAL,
-      'modulo',
-    );
+    const subject = row.modulo
+      ? await this.findSubjectByName(row, context.schoolId, SubjectType.TECHNICAL, 'modulo')
+      : context.subjectId
+        ? { id: context.subjectId }
+        : await this.findSubjectByName(row, context.schoolId, SubjectType.TECHNICAL, 'modulo');
     this.ensureSelectedSubject(context, subject.id);
     const learningOutcomes = await this.prisma.technicalLearningOutcome.findMany({
       where: { schoolId: context.schoolId, subjectId: subject.id, isActive: true },
@@ -575,6 +576,34 @@ export class ImportsService {
     }
   }
 
+  private ensureTemplateSelection(rows: ImportRow[], context: ImportContext, subjectName?: string) {
+    const course = rows[0]?.plantilla_curso;
+    const subject = rows[0]?.plantilla_asignatura;
+    if (
+      course &&
+      context.courseName &&
+      this.normalizeHeader(String(course)) !== this.normalizeHeader(context.courseName)
+    ) {
+      throw new BadRequestException(
+        'El curso de la plantilla no coincide con el curso seleccionado.',
+      );
+    }
+    if (subject && !subjectName) {
+      throw new BadRequestException(
+        'Selecciona la asignatura de esta plantilla antes de importar.',
+      );
+    }
+    if (
+      subject &&
+      subjectName &&
+      this.normalizeHeader(String(subject)) !== this.normalizeHeader(subjectName)
+    ) {
+      throw new BadRequestException(
+        'La asignatura de la plantilla no coincide con la seleccionada.',
+      );
+    }
+  }
+
   private async resolveSelectedSubject(
     context: ImportContext,
     subjectId: string,
@@ -649,14 +678,30 @@ export class ImportsService {
           orderBy: { order: 'asc' },
         });
         if (!outcomes.length) throw new BadRequestException('El módulo no tiene RA activos.');
-        headers = [
-          'numero_lista',
-          'modulo',
-          ...outcomes.flatMap(({ code }) => [code, `${code}_R1`, `${code}_R2`, `${code}_ESP`]),
-        ];
+        if (outcomes.length > MAX_TECHNICAL_TEMPLATE_OUTCOMES) {
+          throw new BadRequestException(
+            `La plantilla técnica admite un máximo de ${MAX_TECHNICAL_TEMPLATE_OUTCOMES} RA activos. Revisa la configuración del módulo.`,
+          );
+        }
+        const students = await this.prisma.student.findMany({
+          where: {
+            schoolId: context.schoolId,
+            schoolYearId: context.schoolYearId,
+            courseId: dto.courseId,
+          },
+          orderBy: { listNumber: 'asc' },
+          select: { listNumber: true },
+        });
+        formatTechnicalTemplate(
+          sheet,
+          context.courseName ?? dto.courseId,
+          subjectName,
+          students.map((student) => student.listNumber),
+          outcomes,
+        );
       }
     }
-    if (dto.type !== 'academic') {
+    if (dto.type === 'students') {
       sheet.columns = headers.map((header) => ({
         header,
         key: header,
@@ -665,18 +710,6 @@ export class ImportsService {
       sheet.views = [{ state: 'frozen', ySplit: 1, xSplit: dto.type === 'students' ? 1 : 2 }];
       sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
       sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E79' } };
-    }
-    if (dto.type === 'technical') {
-      const students = await this.prisma.student.findMany({
-        where: {
-          schoolId: context.schoolId,
-          schoolYearId: context.schoolYearId,
-          courseId: dto.courseId,
-        },
-        orderBy: { listNumber: 'asc' },
-        select: { listNumber: true },
-      });
-      students.forEach((student) => sheet.addRow([student.listNumber, subjectName]));
     }
     const instructions = workbook.addWorksheet('Instrucciones');
     instructions.getColumn(1).width = 110;
@@ -691,14 +724,16 @@ export class ImportsService {
           : `Asignatura/módulo seleccionado: ${subjectName}.`,
       ],
       [
-        dto.type === 'academic'
+        dto.type !== 'students'
           ? 'El curso y la asignatura se seleccionan en la aplicación; no se repiten por estudiante. Las filas sin notas se omiten.'
           : 'Elimina las filas que no desees importar.',
       ],
       [
         dto.type === 'academic'
           ? 'Azul claro: notas ordinarias. Amarillo claro: recuperaciones.'
-          : 'Completa solamente las columnas que necesites importar.',
+          : dto.type === 'technical'
+            ? 'Cada RA tiene un color propio. Sus cuatro columnas son ordinaria, recuperación 1, recuperación 2 y especial (ESP), diferenciadas por tonos.'
+            : 'Completa solamente las columnas que necesites importar.',
       ],
       ['Las celdas de notas vacías conservan los valores existentes.'],
       ['Las notas se validan con las mismas reglas del registro de calificaciones.'],
