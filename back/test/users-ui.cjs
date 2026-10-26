@@ -21,6 +21,7 @@ const origin = 'http://localhost:3100';
       const writes = [];
       let userRequests = 0;
       let failCreate = true;
+      let failPassword = true;
       await context.route('**/*', async (route) => {
         const request = route.request();
         const url = new URL(request.url());
@@ -40,6 +41,15 @@ const origin = 'http://localhost:3100';
             return route.fulfill({ headers, json: created });
           }
           if (request.method() === 'PATCH') {
+            if (url.pathname.endsWith('/password')) {
+              writes.push({ method: 'PATCH', id: url.pathname.split('/').at(-2), values: request.postDataJSON(), passwordChange: true });
+              await new Promise((resolve) => setTimeout(resolve, 150));
+              if (failPassword) {
+                failPassword = false;
+                return route.fulfill({ headers, status: 422, json: { message: 'La contraseña no cumple los requisitos de acceso.' } });
+              }
+              return route.fulfill({ headers, json: { message: 'Contraseña actualizada.' } });
+            }
             const id = url.pathname.split('/').pop();
             const values = request.postDataJSON();
             writes.push({ method: 'PATCH', id, values });
@@ -111,6 +121,30 @@ const origin = 'http://localhost:3100';
         assert.equal(writes.at(-1).values.teacherId, null);
         assert.equal(writes.at(-1).values.schoolId, null);
         assert.equal(Object.hasOwn(writes.at(-1).values, 'password'), false);
+        await createdRow.getByRole('button', { name: 'Cambiar contraseña', exact: true }).click();
+        const passwordForm = page.getByRole('heading', { name: 'Cambiar contraseña', exact: true }).locator('..').locator('..');
+        const writeCount = writes.length;
+        await page.getByLabel('Nueva contraseña', { exact: true }).fill('short');
+        await page.getByLabel('Confirmar nueva contraseña', { exact: true }).fill('short');
+        await page.getByRole('button', { name: 'Guardar contraseña', exact: true }).click();
+        await page.getByText('La contraseña debe tener al menos 8 caracteres.').waitFor();
+        assert.equal(writes.length, writeCount);
+        await page.getByLabel('Nueva contraseña', { exact: true }).fill('NewExample123!');
+        await page.getByRole('button', { name: 'Guardar contraseña', exact: true }).click();
+        await page.getByText('Las contraseñas no coinciden.').waitFor();
+        assert.equal(writes.length, writeCount);
+        await page.getByLabel('Confirmar nueva contraseña', { exact: true }).fill('NewExample123!');
+        await page.getByRole('button', { name: 'Guardar contraseña', exact: true }).click();
+        await page.getByText('La contraseña no cumple los requisitos de acceso.', { exact: true }).waitFor();
+        assert.equal(await page.getByLabel('Nueva contraseña', { exact: true }).inputValue(), 'NewExample123!');
+        await page.getByRole('button', { name: 'Guardar contraseña', exact: true }).click();
+        await passwordForm.waitFor({ state: 'detached' });
+        assert.equal(writes.length, writeCount + 2);
+        assert.deepEqual(writes.at(-1), { method: 'PATCH', id: 'created', values: { password: 'NewExample123!' }, passwordChange: true });
+        await createdRow.getByRole('button', { name: 'Cambiar contraseña', exact: true }).click();
+        assert.equal(await page.getByLabel('Nueva contraseña', { exact: true }).inputValue(), '');
+        await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
+        await passwordForm.waitFor({ state: 'detached' });
         await page.getByLabel('Buscar', { exact: true }).fill('');
         await page.getByLabel('Filtrar por escuela').selectOption('global');
         await page.getByText('2 usuario(s)', { exact: true }).waitFor();

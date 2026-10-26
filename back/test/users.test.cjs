@@ -31,6 +31,7 @@ function fixture() {
     removeCreatedAccount: async (id) => events.push(['auth-delete', id]),
     find: async (id, email) => { events.push(['auth-find', id, email]); return 'auth-id'; },
     updateEmail: async (id, email) => events.push(['auth-email', id, email]),
+    updatePassword: async (id, password) => events.push(['auth-password', id, password]),
   };
   const audit = [];
   const service = new UsersService(prisma, new PermissionsService(prisma), {
@@ -125,4 +126,103 @@ test('Auth adapter uses server-side creation and paginated lookup for legacy int
   await accounts.updateEmail('auth-id', 'new@example.test');
   assert.equal(calls.at(-1).options.method, 'PUT');
   assert.equal(JSON.parse(calls.at(-1).options.body).email, 'new@example.test');
+  await accounts.updatePassword('auth-id', 'NewExample123!');
+  assert.equal(calls.at(-1).url, 'https://auth.example.test/auth/v1/admin/users/auth-id');
+  assert.equal(calls.at(-1).options.method, 'PUT');
+  assert.deepEqual(JSON.parse(calls.at(-1).options.body), { password: 'NewExample123!' });
+});
+
+test('password changes update Auth, preserve internal user data and only audit the event', async () => {
+  const { service, users, events, audit } = fixture();
+  await service.create(payload, actor);
+  const before = { ...users.get('auth-id') };
+  audit.length = 0;
+  events.length = 0;
+  const password = 'NewExample123!';
+  const result = await service.changePassword('auth-id', { password }, actor);
+  assert.deepEqual(events, [['auth-find', 'auth-id', payload.email], ['auth-password', 'auth-id', password]]);
+  assert.deepEqual(users.get('auth-id'), before);
+  assert.equal(result.message, 'Contraseña actualizada.');
+  assert.deepEqual(audit, [{ schoolId: 'school-a', userId: 'root', entity: 'User', entityId: 'auth-id', newValue: { passwordChanged: true } }]);
+  assert.equal(JSON.stringify({ audit, result, users: [...users.values()] }).includes(password), false);
+});
+
+test('password changes enforce roles and school boundaries before looking up Auth accounts', async () => {
+  const { service, users, events } = fixture();
+  users.set('teacher', { ...payload, password: undefined, id: 'teacher' });
+  const admin = { id: 'admin', schoolId: 'school-a', role: 'ADMIN' };
+  const dto = { password: 'NewExample123!' };
+  await assert.rejects(() => service.changePassword('teacher', dto, { ...admin, schoolId: 'school-b' }), /another school/);
+  await assert.rejects(() => service.changePassword('scoped-root', dto, admin), /permiso/);
+  await assert.rejects(() => service.changePassword('teacher', dto, { ...admin, role: 'TEACHER' }), /permiso/);
+  await assert.rejects(() => service.changePassword('missing', dto, actor), /not found/);
+  assert.deepEqual(events, []);
+  await service.changePassword('teacher', dto, admin);
+  assert.equal(events.at(-1)[0], 'auth-password');
+  await service.changePassword('root', dto, actor);
+  assert.equal(events.at(-1)[0], 'auth-password');
+});
+
+test('password lookup or provider failures never report success or audit a password change', async () => {
+  const { service, accounts, events, audit } = fixture();
+  await service.create(payload, actor);
+  audit.length = 0;
+  events.length = 0;
+  accounts.find = async () => { throw new Error('Auth account missing'); };
+  await assert.rejects(() => service.changePassword('auth-id', { password: 'NewExample123!' }, actor), /Auth account missing/);
+  assert.deepEqual(events, []);
+  accounts.find = async () => 'legacy-auth-id';
+  accounts.updatePassword = async () => { throw new Error('Auth update failed'); };
+  await assert.rejects(() => service.changePassword('auth-id', { password: 'NewExample123!' }, actor), /Auth update failed/);
+  assert.deepEqual(audit, []);
+});
+
+test('password updates report provider password policy errors without exposing its response', async (t) => {
+  let code = 'weak_password';
+  t.mock.method(global, 'fetch', async () => Response.json({ code, msg: 'private provider details' }, { status: 422 }));
+  const accounts = new UserAccountsService({ getOrThrow: (key) => key === 'supabase.url' ? 'https://auth.example.test' : 'server-test-key' });
+  await assert.rejects(() => accounts.updatePassword('auth-id', 'NewExample123!'), /no cumple los requisitos/);
+  code = 'same_password';
+  await assert.rejects(() => accounts.updatePassword('auth-id', 'NewExample123!'), /diferente de la actual/);
+});
+
+test('HTTP password endpoint validates the payload and guards administrator access', async () => {
+  const { Test } = require('@nestjs/testing');
+  const { ValidationPipe } = require('@nestjs/common');
+  const { Reflector } = require('@nestjs/core');
+  const { UsersController } = require('../dist/src/users/users.controller');
+  const { RolesGuard } = require('../dist/src/common/guards/roles.guard');
+  const { service, users, events } = fixture();
+  users.set('teacher', { id: 'teacher', role: 'TEACHER', email: payload.email, schoolId: 'school-a' });
+  let requestUser = actor;
+  const module = await Test.createTestingModule({
+    controllers: [UsersController], providers: [{ provide: UsersService, useValue: service }],
+  }).compile();
+  const app = module.createNestApplication();
+  app.setGlobalPrefix('api');
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+  app.useGlobalGuards(new RolesGuard(new Reflector()));
+  // Authentication is simulated only in this isolated test application.
+  app.use((request, response, next) => { request.user = requestUser; next(); });
+  try {
+    await app.listen(0, '127.0.0.1');
+    const url = `${await app.getUrl()}/api/users/teacher/password`;
+    const change = (body) => fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    for (const invalid of [{}, { password: null }, { password: 12345678 }, { password: 'short' }, { password: 'NewExample123!', role: 'SUPER_ADMIN' }]) {
+      assert.equal((await change(invalid)).status, 400);
+    }
+    assert.deepEqual(events, []);
+    requestUser = { id: 'teacher', role: 'TEACHER', schoolId: 'school-a' };
+    assert.equal((await change({ password: 'NewExample123!' })).status, 403);
+    requestUser = undefined;
+    assert.equal((await change({ password: 'NewExample123!' })).status, 403);
+    requestUser = { id: 'admin', role: 'ADMIN', schoolId: 'school-b' };
+    assert.equal((await change({ password: 'NewExample123!' })).status, 403);
+    assert.deepEqual(events, []);
+    requestUser = actor;
+    const response = await change({ password: 'NewExample123!' });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { message: 'Contraseña actualizada.' });
+    assert.deepEqual(events.at(-1), ['auth-password', 'auth-id', 'NewExample123!']);
+  } finally { await app.close(); }
 });

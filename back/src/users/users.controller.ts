@@ -5,6 +5,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import { CreateUserDto } from './dto/create-user.dto';
+import { ChangeUserPasswordDto } from './dto/change-user-password.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UsersService } from './users.service';
 
@@ -38,6 +39,16 @@ export class UsersController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.usersService.update(id, dto, user);
+  }
+
+  @Patch(':id/password')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  changePassword(
+    @Param('id') id: string,
+    @Body() dto: ChangeUserPasswordDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.usersService.changePassword(id, dto, user);
   }
 
   @Delete(':id')

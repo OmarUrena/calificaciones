@@ -51,12 +51,16 @@ export class UserAccountsService {
       if (result.users.length < 100) break;
     }
     throw new BadRequestException(
-      'No se encontró la cuenta de acceso de este usuario para cambiar su correo.',
+      'No se encontró la cuenta de acceso de este usuario para actualizar sus credenciales.',
     );
   }
 
   async updateEmail(id: string, email: string): Promise<void> {
     await this.request(`/${encodeURIComponent(id)}`, 'PUT', { email, email_confirm: true });
+  }
+
+  async updatePassword(id: string, password: string): Promise<void> {
+    await this.request(`/${encodeURIComponent(id)}`, 'PUT', { password });
   }
 
   private async request(
@@ -94,6 +98,14 @@ export class UserAccountsService {
       const code = data.code ?? data.error_code;
       if (code === 'email_exists' || code === 'user_already_exists' || response.status === 409) {
         throw new ConflictException('Ya existe una cuenta con ese correo electrónico.');
+      }
+      if (code === 'weak_password') {
+        throw new BadRequestException(
+          'La contraseña no cumple los requisitos de acceso. Usa una contraseña más larga con letras, números y símbolos.',
+        );
+      }
+      if (code === 'same_password') {
+        throw new BadRequestException('La nueva contraseña debe ser diferente de la actual.');
       }
       if (response.status === 422 || response.status === 400) {
         throw new BadRequestException(

@@ -14,6 +14,7 @@ import { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import { rethrowKnownPrismaError } from '../common/utils/prisma-error.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
+import { ChangeUserPasswordDto } from './dto/change-user-password.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserAccountsService } from './user-accounts.service';
 
@@ -153,6 +154,25 @@ export class UsersService {
       });
     }
     return updatedUser;
+  }
+
+  async changePassword(id: string, dto: ChangeUserPasswordDto, user: AuthenticatedUser) {
+    const target = await this.findOne(id, user);
+    this.ensureCanModifyTarget(target, user);
+    const accountId = await this.accounts.find(id, target.email);
+    await this.accounts.updatePassword(accountId, dto.password);
+
+    if (target.schoolId) {
+      await this.auditService.logUpdate({
+        schoolId: target.schoolId,
+        userId: user.id,
+        entity: 'User',
+        entityId: target.id,
+        newValue: { passwordChanged: true },
+      });
+    }
+
+    return { message: 'Contraseña actualizada.' };
   }
 
   async remove(id: string, user: AuthenticatedUser) {

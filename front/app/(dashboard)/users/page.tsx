@@ -6,8 +6,9 @@ import { Plus, UsersRound } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { UserForm } from "@/components/forms/UserForm";
+import { ChangeUserPasswordForm } from "@/components/forms/ChangeUserPasswordForm";
 import { useCurrentUser } from "@/hooks/use-current-user";
-import { useUsers, useUserMutations } from "@/hooks/use-users";
+import { useUsers, useUserMutations, useChangeUserPassword } from "@/hooks/use-users";
 import { useSchools } from "@/hooks/use-schools";
 import { useTeachers } from "@/hooks/use-teachers";
 import type { User, UserFormValues } from "@/types/user";
@@ -27,7 +28,9 @@ function UsersContent({ currentUserId }: { currentUserId: string }) {
   const schoolsQuery = useSchools();
   const teachersQuery = useTeachers();
   const mutations = useUserMutations();
+  const passwordMutation = useChangeUserPassword();
   const [editor, setEditor] = useState<User | "new" | null>(null);
+  const [passwordUser, setPasswordUser] = useState<User | null>(null);
   const [search, setSearch] = useState("");
   const [schoolId, setSchoolId] = useState("");
   const [role, setRole] = useState("");
@@ -51,7 +54,8 @@ function UsersContent({ currentUserId }: { currentUserId: string }) {
   // TanStack Table manages its own mutable table instance.
   // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({ data: filtered, columns, getCoreRowModel: getCoreRowModel(), getPaginationRowModel: getPaginationRowModel(), initialState: { pagination: { pageSize: 10 } } });
-  const busy = mutations.create.isPending || mutations.update.isPending;
+  const busy = mutations.create.isPending || mutations.update.isPending || passwordMutation.isPending;
+  const editing = Boolean(editor || passwordUser);
   const loading = usersQuery.isLoading || schoolsQuery.isLoading || teachersQuery.isLoading;
   const error = usersQuery.error ?? schoolsQuery.error ?? teachersQuery.error;
   async function save(values: UserFormValues) {
@@ -68,13 +72,22 @@ function UsersContent({ currentUserId }: { currentUserId: string }) {
       toast.success(user.isActive ? "Usuario desactivado." : "Usuario activado.");
     } catch (error) { toast.error(error instanceof Error ? error.message : "No se pudo actualizar el estado."); }
   }
+  async function changePassword(password: string) {
+    if (!passwordUser) return;
+    try {
+      await passwordMutation.mutateAsync({ id: passwordUser.id, password });
+      setPasswordUser(null);
+      toast.success("Contraseña actualizada.");
+    } finally { passwordMutation.reset(); }
+  }
   return <section className="space-y-6">
     <div className="flex flex-wrap items-start justify-between gap-4"><div><h1 className="institutional-title">Usuarios</h1><p className="institutional-subtitle">Gestiona las cuentas de acceso, roles y escuelas de los usuarios.</p></div>
-      <Button disabled={loading || Boolean(error) || busy || Boolean(editor)} onClick={() => setEditor("new")}><Plus aria-hidden="true" />Crear usuario</Button></div>
+      <Button disabled={loading || Boolean(error) || busy || editing} onClick={() => setEditor("new")}><Plus aria-hidden="true" />Crear usuario</Button></div>
     {loading && <p role="status" className="admin-card">Cargando usuarios, escuelas y maestros...</p>}
     {error && <div role="alert" className="admin-card text-red-800"><p>{error.message}</p><Button variant="outline" onClick={() => { void usersQuery.refetch(); void schoolsQuery.refetch(); void teachersQuery.refetch(); }}>Reintentar</Button></div>}
     {editor && !loading && !error && <UserForm key={editor === "new" ? "new" : editor.id} user={editor === "new" ? undefined : editor} currentUserId={currentUserId}
       schools={schoolsQuery.data ?? []} teachers={teachersQuery.data ?? []} users={users} onSave={save} onCancel={() => setEditor(null)} />}
+    {passwordUser && <ChangeUserPasswordForm key={passwordUser.id} user={passwordUser} onSave={changePassword} onCancel={() => setPasswordUser(null)} />}
     <div className="admin-card grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <div><label htmlFor="users-search" className="form-label">Buscar</label><input id="users-search" className="form-control" placeholder="Nombre o correo" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
       <div><label htmlFor="users-school-filter" className="form-label">Filtrar por escuela</label><select id="users-school-filter" className="form-control" value={schoolId} onChange={(event) => setSchoolId(event.target.value)}><option value="">Todas</option><option value="global">Sin escuela (global)</option>{schoolsQuery.data?.map((school) => <option key={school.id} value={school.id}>{school.name}</option>)}</select></div>
@@ -87,9 +100,10 @@ function UsersContent({ currentUserId }: { currentUserId: string }) {
         <thead className="bg-institutional-blue-light">{table.getHeaderGroups().map((group) => <tr key={group.id}>{group.headers.map((header) => <th key={header.id} scope="col" className="border border-border px-3 py-3">{flexRender(header.column.columnDef.header, header.getContext())}</th>)}<th scope="col" className="border border-border px-3 py-3">Acciones</th></tr>)}</thead>
         <tbody>{table.getRowModel().rows.map((row) => <tr key={row.id}>
           {row.getVisibleCells().map((cell) => <td key={cell.id} className="border border-border px-3 py-3">{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}
-          <td className="border border-border px-3 py-3"><div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={busy || Boolean(editor)} onClick={() => { setEditor(row.original); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Editar</Button>
-            <Button size="sm" variant="outline" disabled={busy || Boolean(editor) || row.original.id === currentUserId} onClick={() => void toggle(row.original)}>{row.original.isActive ? "Desactivar" : "Activar"}</Button>
+          <td className="border border-border px-3 py-3"><div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" disabled={busy || editing} onClick={() => { setEditor(row.original); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Editar</Button>
+            <Button size="sm" variant="outline" disabled={busy || editing} onClick={() => { setPasswordUser(row.original); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Cambiar contraseña</Button>
+            <Button size="sm" variant="outline" disabled={busy || editing || row.original.id === currentUserId} onClick={() => void toggle(row.original)}>{row.original.isActive ? "Desactivar" : "Activar"}</Button>
           </div></td></tr>)}</tbody></table></div>
       {filtered.length === 0 && <div className="py-6 text-center text-institutional-gray"><UsersRound className="mx-auto mb-2" aria-hidden="true" />No hay usuarios que coincidan con los filtros.</div>}
       <div className="flex flex-wrap items-center justify-between gap-3"><span className="text-sm">Página {table.getState().pagination.pageIndex + 1} de {Math.max(1, table.getPageCount())}</span><div className="flex gap-2"><Button variant="outline" disabled={!table.getCanPreviousPage()} onClick={() => table.previousPage()}>Anterior</Button><Button variant="outline" disabled={!table.getCanNextPage()} onClick={() => table.nextPage()}>Siguiente</Button></div></div>

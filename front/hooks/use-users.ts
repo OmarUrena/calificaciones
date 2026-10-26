@@ -12,6 +12,16 @@ export function useUsers() {
   });
 }
 
+export function useChangeUserPassword() {
+  return useMutation({
+    mutationFn: ({ id, password }: { id: string; password: string }) =>
+      apiFetch<{ message: string }>(`/users/${id}/password`, {
+        method: "PATCH", body: JSON.stringify({ password }),
+      }),
+    retry: false,
+  });
+}
+
 export function useUserMutations() {
   const client = useQueryClient();
   function refresh() {
