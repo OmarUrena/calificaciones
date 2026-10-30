@@ -63,7 +63,8 @@ function cleanSchoolPayload(values: Partial<SchoolFormValues>) {
   return Object.fromEntries(
     Object.entries(values).map(([key, value]) => [
       key,
-      typeof value === "string" && value.trim() === "" ? undefined : value,
+      typeof value === "string" && value.trim() === "" &&
+      !["educationalDistrict", "province", "municipality"].includes(key) ? undefined : value,
     ]),
   );
 }

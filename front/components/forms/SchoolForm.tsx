@@ -14,6 +14,9 @@ const schoolSchema = z.object({
   code: z.string().min(1, "El código es obligatorio."),
   address: z.string().optional(),
   phone: z.string().optional(),
+  educationalDistrict: z.string().optional(),
+  province: z.string().optional(),
+  municipality: z.string().optional(),
   logoUrl: z.string().optional(),
   isActive: z.boolean(),
 });
@@ -30,6 +33,9 @@ const emptyValues: SchoolFormValues = {
   code: "",
   address: "",
   phone: "",
+  educationalDistrict: "",
+  province: "",
+  municipality: "",
   logoUrl: "",
   isActive: true,
 };
@@ -58,6 +64,9 @@ export function SchoolForm({
             code: school.code,
             address: school.address ?? "",
             phone: school.phone ?? "",
+            educationalDistrict: school.educationalDistrict ?? "",
+            province: school.province ?? "",
+            municipality: school.municipality ?? "",
             logoUrl: school.logoUrl ?? "",
             isActive: school.isActive,
           }
@@ -117,6 +126,19 @@ export function SchoolForm({
               {...register("phone")}
             />
           </Field>
+
+          {([
+            ["educationalDistrict", "Distrito educativo"],
+            ["province", "Provincia"],
+            ["municipality", "Municipio"],
+          ] as const).map(([field, label]) => (
+            <Field key={field} label={label} error={errors[field]?.message}>
+              <input
+                className={cn("form-control", errors[field] && "form-control-error")}
+                {...register(field)}
+              />
+            </Field>
+          ))}
 
           <Field
             label="Logo URL"

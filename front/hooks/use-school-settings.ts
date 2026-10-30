@@ -7,6 +7,9 @@ import type { School } from "@/types/school";
 export type SchoolSettingsValues = Pick<School, "name" | "code"> & {
   address: string;
   phone: string;
+  educationalDistrict: string;
+  province: string;
+  municipality: string;
 };
 
 export function useSchoolSettings(schoolId: string) {

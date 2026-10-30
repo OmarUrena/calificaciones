@@ -86,6 +86,18 @@ test('academic report renders one row per subject with a real column for every g
   assert.match(html, />APPROVED</);
 });
 
+for (const period of [1, 2, 3]) {
+  test(`P${period} omits the block averages and final results table`, () => {
+    const html = render(period);
+    assert.match(html, new RegExp(`class="academic-detail period-${period}"`));
+    assert.doesNotMatch(html, /Promedios por bloque y resultado final/);
+    assert.doesNotMatch(html, /<table class="academic-summary"/);
+    for (const heading of ['PC1', 'PC2', 'PC3', 'PC4', 'CF', 'Estado']) {
+      assert.doesNotMatch(html, new RegExp(`>${heading}<`));
+    }
+  });
+}
+
 test('an earlier report period includes all blocks but does not reveal later grades or final averages', () => {
   const html = render(2);
   for (const title of blockTitles) {

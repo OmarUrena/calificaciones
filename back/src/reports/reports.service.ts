@@ -69,7 +69,7 @@ export class ReportsService {
 
     await this.ensureCanGenerateCourseReports(data.student.courseId, data.student.schoolId, user);
 
-    const html = this.buildDocumentHtml([this.buildStudentReportHtml(data, period)]);
+    const html = this.buildDocumentHtml(this.buildStudentReportPages(data, period));
     const pdf = await this.renderPdf(html);
 
     await this.auditService.log({
@@ -108,7 +108,7 @@ export class ReportsService {
       course.students.map((student) => this.getStudentReportData(student.id)),
     );
     const html = this.buildDocumentHtml(
-      studentReports.map((studentReport) => this.buildStudentReportHtml(studentReport, period)),
+      studentReports.flatMap((studentReport) => this.buildStudentReportPages(studentReport, period)),
     );
     const pdf = await this.renderPdf(html);
 
@@ -242,35 +242,78 @@ export class ReportsService {
     };
   }
 
+  private buildStudentReportPages(data: StudentReportData, period: number): string[] {
+    return [this.buildStudentReportHtml(data, period), this.buildStudentCoverHtml(data)];
+  }
+
   private buildStudentReportHtml(data: StudentReportData, period: number): string {
     const { student } = data;
     const studentName = `${student.firstName} ${student.lastName}`;
 
     return `
       <section class="report-page">
-        <header class="report-header">
-          <div class="school-logo">${student.school.logoUrl ? `<img src="${this.escapeAttribute(student.school.logoUrl)}" alt="Logo" />` : ''}</div>
-          <div>
-            <h1>${this.escapeHtml(student.school.name)}</h1>
-            <p>${this.escapeHtml(student.school.address ?? '')}</p>
-            <p>Año escolar: ${this.escapeHtml(student.schoolYear.name)}</p>
-          </div>
-        </header>
-
         <section class="student-info">
           <div><strong>Estudiante:</strong> ${this.escapeHtml(studentName)}</div>
           <div><strong>Número de lista:</strong> ${student.listNumber}</div>
           <div><strong>Curso:</strong> ${this.escapeHtml(student.course.name)}</div>
-          <div><strong>Grado:</strong> ${this.escapeHtml(student.course.grade)}</div>
-          <div><strong>Sección:</strong> ${this.escapeHtml(student.course.section ?? '-')}</div>
-          <div><strong>Área:</strong> ${this.escapeHtml(student.course.area ?? '-')}</div>
-          <div><strong>Modalidad:</strong> ${this.escapeHtml(student.course.modality ?? '-')}</div>
-          <div><strong>Maestro titular:</strong> ${this.escapeHtml(student.course.titular?.name ?? '-')}</div>
-          <div><strong>Periodo mostrado:</strong> ${period}</div>
         </section>
 
         ${this.buildAcademicSection(data, period)}
         ${this.buildTechnicalSection(data, period)}
+      </section>
+    `;
+  }
+
+  private buildStudentCoverHtml({ student }: StudentReportData): string {
+    const { school, course } = student;
+    const field = (label: string, value: string | number | null | undefined) =>
+      `<p><strong>${label}:</strong> <span class="cover-value">${this.escapeHtml(String(value ?? '').trim())}</span></p>`;
+
+    return `
+      <section class="report-page report-cover">
+        <div class="cover-notes">
+          <table class="signature-table">
+            <thead><tr><th>FIRMA DEL PADRE, MADRE O TUTOR</th></tr></thead>
+            <tbody>
+              <tr><td class="signature-subtitle">Períodos de reportes de calificaciones</td></tr>
+              ${['Ago–Sept–Oct', 'Nov–Dic–Ene', 'Feb–Mar', 'Abr–May–Jun'].map((label) => `<tr><td><div class="signature-line"><span>${label}</span><span></span></div></td></tr>`).join('')}
+            </tbody>
+          </table>
+          <table class="observations-table">
+            <thead><tr><th>OBSERVACIONES</th></tr></thead>
+            <tbody>
+              <tr><td></td></tr><tr><td></td></tr>
+              <tr><td class="cover-message">“No vayas donde el camino te lleve, ve donde no hay camino y deja huella...”<br />¡Buen trabajo!</td></tr>
+              ${Array.from({ length: 12 }, () => '<tr><td></td></tr>').join('')}
+            </tbody>
+          </table>
+        </div>
+        <div class="cover-identity">
+          <header class="cover-heading">
+            ${school.logoUrl ? `<img class="cover-logo" src="${this.escapeAttribute(school.logoUrl)}" alt="Logo del centro educativo" />` : '<div class="cover-logo-placeholder"></div>'}
+            <h1>${this.escapeHtml(school.name)}</h1>
+            <p class="cover-title">BOLETÍN DE CALIFICACIONES</p>
+            <h2>${this.escapeHtml(course.name)}</h2>
+            <p class="cover-year"><strong>Año escolar: ${this.escapeHtml(student.schoolYear.name)}</strong></p>
+          </header>
+          <div class="cover-student">
+            <div class="cover-student-row">${field('Sección', course.section)}${field('Número de orden', student.listNumber)}</div>
+            ${field('Nombre(s)', student.firstName)}
+            ${field('Apellido(s)', student.lastName)}
+          </div>
+          <div class="cover-teacher">
+            ${field('Docente', course.titular?.name)}
+            ${field('Centro educativo', school.name)}
+          </div>
+          <div class="cover-school">
+            ${field('Teléfono del centro', school.phone)}
+            ${field('Distrito educativo', school.educationalDistrict)}
+          </div>
+          <div class="cover-location">
+            ${field('Provincia', school.province)}
+            ${field('Municipio', school.municipality)}
+          </div>
+        </div>
       </section>
     `;
   }
@@ -360,6 +403,7 @@ export class ReportsService {
         <tbody>${detailRows.join('')}</tbody>
       </table>
 
+      ${period === 4 ? `
       <h3>Promedios por bloque y resultado final</h3>
       <table class="academic-summary">
         <thead>
@@ -371,6 +415,7 @@ export class ReportsService {
         </thead>
         <tbody>${summaryRows.join('')}</tbody>
       </table>
+      ` : ''}
     `;
   }
 
@@ -486,10 +531,36 @@ export class ReportsService {
             .technical-grid .status-column { width: 68px; }
             .report-page { break-after: page; min-height: 185mm; }
             .report-page:last-child { break-after: auto; }
-            .report-header { align-items: center; border-bottom: 2px solid #111827; display: grid; gap: 14px; grid-template-columns: 80px 1fr; padding-bottom: 12px; }
-            .school-logo { align-items: center; border: 1px solid #d1d5db; display: flex; height: 70px; justify-content: center; width: 70px; }
-            .school-logo img { max-height: 64px; max-width: 64px; object-fit: contain; }
-            .student-info { display: grid; gap: 6px 14px; grid-template-columns: 1fr 1fr; margin-top: 14px; }
+            .student-info { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr) auto minmax(0, 2fr); align-items: baseline; border-bottom: 1px solid #111827; padding-bottom: 8px; }
+            .student-info > div { min-width: 0; overflow-wrap: anywhere; }
+            .report-cover { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 22mm; padding: 4mm 0; color: #000; }
+            .cover-notes { padding-top: 3mm; }
+            .report-cover table { margin: 0; }
+            .report-cover th { background: #3399ff; color: #000; text-align: center; font-size: 10px; padding: 2px; }
+            .report-cover td, .report-cover th { border: 1px solid #000; }
+            .signature-table td { border-top: 0; border-bottom: 0; padding: 5px 4px; }
+            .signature-table tr:last-child td { border-bottom: 1px solid #000; padding-bottom: 8px; }
+            .signature-subtitle { text-align: center; font-weight: 700; }
+            .signature-line { display: flex; align-items: baseline; gap: 4px; }
+            .signature-line > span:last-child { flex: 1; border-bottom: 1px solid #000; }
+            .report-cover .observations-table { margin-top: 10mm; }
+            .observations-table td { height: 6mm; padding: 0 4px; }
+            .observations-table .cover-message { height: 13mm; text-align: center; vertical-align: middle; font-family: Georgia, serif; font-size: 11px; }
+            .cover-identity { font-size: 12px; line-height: 1.4; min-width: 0; overflow-wrap: anywhere; }
+            .cover-heading { text-align: center; }
+            .cover-logo { display: block; width: 32mm; height: 22mm; object-fit: contain; margin: 0 auto 3mm; }
+            .cover-logo-placeholder { height: 25mm; }
+            .cover-heading h1 { font-size: 16px; line-height: 1.25; margin: 0 0 2mm; }
+            .cover-title { color: #1f4e79; font-size: 14px; }
+            .cover-heading h2 { color: #1f4e79; font-size: 16px; line-height: 1.2; border: 0; padding: 0; margin: 2mm 0 10mm; }
+            .cover-heading .cover-year { margin-bottom: 4mm; }
+            .cover-identity p { margin: 0 0 2mm; }
+            .cover-student-row { display: flex; justify-content: space-between; gap: 8px; }
+            .cover-value { text-decoration: underline; text-underline-offset: 2px; }
+            .cover-value:empty { display: inline-block; min-width: 30mm; border-bottom: 1px solid; }
+            .cover-teacher { margin-top: 7mm; }
+            .cover-school { margin-top: 12mm; }
+            .cover-location { margin-top: 7mm; }
             .empty { border: 1px solid #d1d5db; color: #6b7280; padding: 10px; }
           </style>
         </head>

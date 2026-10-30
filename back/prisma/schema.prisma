@@ -13,6 +13,9 @@ model School {
   code                      String                     @unique
   address                   String?
   phone                     String?
+  educationalDistrict       String?
+  province                  String?
+  municipality              String?
   logoUrl                   String?
   isActive                  Boolean                    @default(true)
   createdAt                 DateTime                   @default(now())
