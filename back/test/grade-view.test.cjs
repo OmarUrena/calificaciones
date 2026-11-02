@@ -12,6 +12,11 @@ const admin = { id: 'admin', role: 'ADMIN', schoolId: 'school-1', teacherId: nul
 const teacher = { ...admin, role: 'TEACHER', teacherId: 'teacher-1' };
 const course = { id: 'course-1', schoolId: 'school-1', schoolYearId: 'year-1' };
 const subject = { id: 'subject-1', schoolId: 'school-1', type: 'ACADEMIC', isActive: false };
+const academicGrade = (scores = {}) => ({
+  subjectId: subject.id, studentId: 'student-1',
+  p1: null, rp1: null, p2: null, rp2: null, p3: null, rp3: null, p4: null, rp4: null,
+  ...scores,
+});
 
 function setup(options = {}) {
   const calls = [];
@@ -23,16 +28,17 @@ function setup(options = {}) {
       ...model('courses', [course]),
       findFirst: async (query) => {
         calls.push({ name: 'course', query });
-        return options.denied ? null : course;
+        return options.denied ? null : { ...course, ...options.course };
       },
     },
     subject: model('subjects', options.subjects ?? [subject]),
-    student: model('students', [{ id: 'student-1', listNumber: 1 }]),
-    academicGrade: model('academic-grades', [{ studentId: 'student-1', p1: 0 }]),
+    student: model('students', options.students ?? [{ id: 'student-1', listNumber: 1 }]),
+    teacherAssignment: model('assignments', [{ subjectId: subject.id, teacher: { name: 'Docente de la asignatura' } }]),
+    academicGrade: model('academic-grades', options.academicGrades ?? [academicGrade({ p1: 0 })]),
     academicSubjectResult: model('academic-results'),
-    technicalGrade: model('technical-grades'),
+    technicalGrade: model('technical-grades', options.technicalGrades ?? []),
     technicalSubjectResult: model('technical-results'),
-    technicalLearningOutcome: model('outcomes'),
+    technicalLearningOutcome: model('outcomes', options.outcomes ?? []),
   };
   return { calls, service: new GradeViewService(prisma, new PermissionsService(prisma)) };
 }
@@ -49,19 +55,23 @@ test('admin can list every course in their school without active year or titular
   assert.deepEqual(calls[0].query.where, { schoolId: 'school-1' });
 });
 
-test('teacher courses require an active assignment and their own school', async () => {
+test('teacher courses include titular courses even without a teaching assignment and stay in their school', async () => {
   const { service, calls } = setup();
   await service.findCourses(teacher);
   assert.deepEqual(calls[0].query.where, {
     schoolId: 'school-1',
-    teacherAssignments: { some: { teacherId: 'teacher-1', isActive: true } },
+    OR: [
+      { titularId: 'teacher-1' },
+      { teacherAssignments: { some: { teacherId: 'teacher-1', isActive: true } } },
+    ],
   });
 });
 
 test('a teacher without a linked record cannot omit the teacher filter', async () => {
   const { service, calls } = setup();
   await service.findCourses({ ...teacher, teacherId: null });
-  assert.equal(calls[0].query.where.teacherAssignments.some.teacherId, '');
+  assert.equal(calls[0].query.where.OR[0].titularId, '');
+  assert.equal(calls[0].query.where.OR[1].teacherAssignments.some.teacherId, '');
 });
 
 test('unavailable course stops access before reading subjects, students or grades', async () => {
@@ -69,7 +79,7 @@ test('unavailable course stops access before reading subjects, students or grade
   await assert.rejects(service.findRegister('other-course', subject.id, teacher), /Curso no disponible/);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].query.where.schoolId, teacher.schoolId);
-  assert.equal(calls[0].query.where.teacherAssignments.some.teacherId, teacher.teacherId);
+  assert.equal(calls[0].query.where.OR[1].teacherAssignments.some.teacherId, teacher.teacherId);
 });
 
 test('cross school access is rejected even if an unexpected course is returned', async () => {
@@ -120,4 +130,84 @@ test('technical register includes inactive learning outcomes with saved grades',
     courseId: course.id, subjectId: subject.id,
   } } });
   assert.ok(!calls.some((call) => call.name === 'academic-grades'));
+});
+
+test('titular teacher can read another teacher subject without their own assignment', async () => {
+  const { service, calls } = setup({ course: { titularId: teacher.teacherId } });
+  const register = await service.findRegister(course.id, subject.id, teacher);
+  assert.equal(register.subject.id, subject.id);
+  assert.equal(register.grades[0].p1, 0);
+  const where = calls.find((call) => call.name === 'subjects').query.where;
+  assert.equal(where.teacherAssignments, undefined);
+  assert.ok(where.OR.some((item) => item.teacherAssignments));
+  assert.equal(where.schoolId, teacher.schoolId);
+});
+
+test('being titular does not give edit permission for another teacher subject', async () => {
+  const permissions = new PermissionsService({ teacherAssignment: { findFirst: async () => null } });
+  await assert.rejects(permissions.ensureTeacherCanManageSubject({
+    user: teacher, schoolId: course.schoolId, schoolYearId: course.schoolYearId,
+    courseId: course.id, subjectId: subject.id,
+  }), /not assigned/);
+});
+
+test('unlinked teacher cannot use a course without titular as titular access', async () => {
+  const { service, calls } = setup({ subjects: [], course: { titularId: null } });
+  await assert.rejects(service.findRegister(course.id, subject.id, { ...teacher, teacherId: null }), /Asignatura no disponible/);
+  const where = calls.find((call) => call.name === 'subjects').query.where;
+  assert.equal(where.teacherAssignments.some.teacherId, '');
+});
+
+test('course overview counts zero and recovery grades, deduplicates blocks and ignores students outside roster', async () => {
+  const { service, calls } = setup({
+    course: { titularId: teacher.teacherId },
+    students: [{ id: 'student-1' }, { id: 'student-2' }],
+    academicGrades: [
+      academicGrade({ p1: 0 }), academicGrade({ p1: 75 }), academicGrade({ rp2: 70 }),
+      academicGrade({ studentId: 'student-2' }),
+      academicGrade({ studentId: 'other-student', p3: 80 }),
+    ],
+  });
+  const [overview] = await service.findSubjects(course.id, teacher);
+  assert.deepEqual(overview.teachers, ['Docente de la asignatura']);
+  assert.equal(overview.studentCount, 2);
+  assert.equal(overview.studentsWithGrades, 1);
+  assert.deepEqual(overview.progress, [
+    { label: 'P1', studentsWithGrades: 1 }, { label: 'P2', studentsWithGrades: 1 },
+    { label: 'P3', studentsWithGrades: 0 }, { label: 'P4', studentsWithGrades: 0 },
+  ]);
+  for (const name of ['assignments', 'academic-grades', 'technical-grades']) {
+    const where = calls.find((call) => call.name === name).query.where;
+    assert.equal(where.schoolId, course.schoolId);
+    assert.equal(where.schoolYearId, course.schoolYearId);
+    assert.equal(where.courseId, course.id);
+    assert.deepEqual(where.subjectId, { in: [subject.id] });
+  }
+});
+
+test('empty grade rows do not count as published grades', async () => {
+  const { service } = setup({ academicGrades: [academicGrade()] });
+  const [overview] = await service.findSubjects(course.id, admin);
+  assert.equal(overview.studentsWithGrades, 0);
+  assert.ok(overview.progress.every((item) => item.studentsWithGrades === 0));
+});
+
+test('technical overview reports each RA separately including zero recovery grades', async () => {
+  const technicalSubject = { ...subject, type: 'TECHNICAL' };
+  const { service } = setup({
+    subjects: [technicalSubject],
+    outcomes: [
+      { id: 'ra-1', subjectId: subject.id, code: 'RA1' },
+      { id: 'ra-2', subjectId: subject.id, code: 'RA2' },
+    ],
+    technicalGrades: [{
+      subjectId: subject.id, studentId: 'student-1', learningOutcomeId: 'ra-1',
+      ordinaryScore: null, recovery1Score: 0, recovery2Score: null, specialScore: null,
+    }],
+  });
+  const [overview] = await service.findSubjects(course.id, admin);
+  assert.equal(overview.studentsWithGrades, 1);
+  assert.deepEqual(overview.progress, [
+    { label: 'RA1', studentsWithGrades: 1 }, { label: 'RA2', studentsWithGrades: 0 },
+  ]);
 });

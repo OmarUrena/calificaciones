@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { ReadOnlyGradeRegister } from "@/components/grades/ReadOnlyGradeRegister";
+import { CourseGradePublicationTable } from "@/components/grades/CourseGradePublicationTable";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { useGradeViewCourses, useGradeViewRegister, useGradeViewSubjects, type GradeViewRegister } from "@/hooks/use-grade-view";
 import { cn } from "@/lib/utils";
@@ -41,6 +42,10 @@ export default function GradeViewPage() {
     setCourseId(""); setSubjectId(""); setSearch(""); setBlock(0);
   }
 
+  function selectSubject(subjectId: string) {
+    setSubjectId(subjectId); setBlock(0); setSearch("");
+  }
+
   return (
     <section className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -69,16 +74,20 @@ export default function GradeViewPage() {
           </label>
           <label className="form-field block">
             <span className="form-label">Asignatura</span>
-            <select className="form-control" disabled={!courseId || subjectsQuery.isLoading} value={subjectId} onChange={(event) => { setSubjectId(event.target.value); setBlock(0); setSearch(""); }}>
+            <select className="form-control" disabled={!courseId || subjectsQuery.isLoading} value={subjectId} onChange={(event) => selectSubject(event.target.value)}>
               <option value="">Selecciona una asignatura</option>
               {subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name} · {subject.type === "ACADEMIC" ? "Académica" : "Técnica"}{subject.isActive ? "" : " (inactiva)"}</option>)}
             </select>
           </label>
         </div>
         <p className="text-sm text-institutional-gray">{user?.role === "TEACHER"
-          ? "Puedes consultar las asignaturas en las que tienes una asignación docente activa."
+          ? "Como titular puedes consultar todas las asignaturas de tu curso. En los demás cursos puedes consultar las asignaturas que impartes."
           : "Puedes consultar todos los cursos y sus calificaciones, incluidas las asignaturas inactivas con registros anteriores."}</p>
       </div>
+
+      {courseId && !subjectsQuery.isLoading && !subjectsQuery.isError && subjects.length > 0 ? (
+        <CourseGradePublicationTable subjects={subjects} selectedSubjectId={subjectId} onSelectSubject={selectSubject} />
+      ) : null}
 
       {error ? <div className="admin-card border-red-200 bg-red-50 text-red-800" role="alert">
         <p>{error.message}</p>

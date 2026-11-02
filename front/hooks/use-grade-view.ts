@@ -14,6 +14,13 @@ export type GradeViewRegister =
 
 export type GradeViewCourse = Course & { school: { id: string; name: string } };
 
+export type GradeViewSubject = Subject & {
+  teachers: string[];
+  studentCount: number;
+  studentsWithGrades: number;
+  progress: { label: string; studentsWithGrades: number }[];
+};
+
 export function useGradeViewCourses() {
   const { data: user } = useCurrentUser();
   return useQuery({
@@ -27,7 +34,7 @@ export function useGradeViewSubjects(courseId: string) {
   const { data: user } = useCurrentUser();
   return useQuery({
     queryKey: ["grade-view", user?.id, "subjects", courseId],
-    queryFn: () => apiFetch<Subject[]>(`/grade-view/course/${courseId}/subjects`),
+    queryFn: () => apiFetch<GradeViewSubject[]>(`/grade-view/course/${courseId}/subjects`),
     enabled: Boolean(user && courseId),
   });
 }
