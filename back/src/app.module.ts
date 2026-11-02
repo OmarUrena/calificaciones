@@ -15,6 +15,7 @@ import { TeacherAssignmentGuard } from './common/guards/teacher-assignment.guard
 import { ConfigurationModule } from './config/configuration.module';
 import { CoursesModule } from './courses/courses.module';
 import { ImportsModule } from './imports/imports.module';
+import { GradeViewModule } from './grade-view/grade-view.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ReportsModule } from './reports/reports.module';
 import { SchoolYearsModule } from './school-years/school-years.module';
@@ -42,6 +43,7 @@ import { UsersModule } from './users/users.module';
     SubjectsModule,
     TeacherAssignmentsModule,
     AcademicGradesModule,
+    GradeViewModule,
     TechnicalLearningOutcomesModule,
     TechnicalGradesModule,
     ImportsModule,

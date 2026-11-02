@@ -24,11 +24,13 @@ export type NavItem = {
 
 const NAV_BY_ROLE: Record<UserRole, NavItem[]> = {
   SUPER_ADMIN: [
+    { href: "/grades/view", label: "Visualización de calificaciones", icon: BookOpen },
     { href: "/schools", label: "Escuelas", icon: Building2 },
     { href: "/users", label: "Usuarios", icon: UsersRound },
     { href: "/settings", label: "Configuración", icon: Settings },
   ],
   ADMIN: [
+    { href: "/grades/view", label: "Visualización de calificaciones", icon: BookOpen },
     { href: "/dashboard", label: "Dashboard", icon: Home },
     { href: "/school-years", label: "Año escolar", icon: CalendarDays },
     { href: "/courses", label: "Cursos", icon: GraduationCap },
@@ -43,6 +45,7 @@ const NAV_BY_ROLE: Record<UserRole, NavItem[]> = {
     { href: "/settings", label: "Configuración", icon: Settings },
   ],
   TEACHER: [
+    { href: "/grades/view", label: "Visualización de calificaciones", icon: BookOpen },
     { href: "/my-subjects", label: "Mis asignaturas", icon: BookOpen },
     { href: "/grades/academic", label: "Calificaciones académicas", icon: GraduationCap },
     { href: "/grades/technical", label: "Calificaciones técnicas", icon: ClipboardList },
