@@ -7,6 +7,7 @@ import { useEffect } from "react";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { AppSidebar } from "./AppSidebar";
 import { Topbar } from "./Topbar";
+import { SessionExpiryNotice } from "./SessionExpiryNotice";
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -35,6 +36,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       <AppSidebar user={user} />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar user={user} />
+        {user ? <SessionExpiryNotice /> : null}
         <main className="flex-1 p-4 md:p-6">{children}</main>
       </div>
     </div>
