@@ -13,10 +13,11 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { data: user, isLoading, isError } = useCurrentUser();
 
   useEffect(() => {
-    if (isError) {
+    // A background session check must not unmount an editor with unsaved work.
+    if (isError && !user) {
       router.replace("/login");
     }
-  }, [isError, router]);
+  }, [isError, user, router]);
 
   if (isLoading) {
     return (

@@ -1,7 +1,7 @@
 "use client";
 
 import { Save } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -43,6 +43,7 @@ export function AcademicGradeEditor({ register }: { register: AcademicRegister }
   );
   const [dirtyAcademicRows, setDirtyAcademicRows] = useState<Set<string>>(() => new Set());
   const [dirtyFinalRows, setDirtyFinalRows] = useState<Set<string>>(() => new Set());
+  const edits = useRef(new Map<string, number>());
   const saveBlock = useSaveAcademicBlock(register.course.id, register.subject.id);
   const saveFinalEvaluations = useSaveAcademicFinalEvaluations(
     register.course.id,
@@ -95,6 +96,7 @@ export function AcademicGradeEditor({ register }: { register: AcademicRegister }
     if (activeTab === "summary") return;
 
     const draftKey = getAcademicDraftKey(activeTab, studentId);
+    edits.current.set(draftKey, (edits.current.get(draftKey) ?? 0) + 1);
     setAcademicDrafts((current) => {
       const scores = { ...current[draftKey], [field]: value };
 
@@ -112,6 +114,7 @@ export function AcademicGradeEditor({ register }: { register: AcademicRegister }
     field: keyof AcademicFinalEvaluationValues,
     value: number | null,
   ) {
+    edits.current.set(studentId, (edits.current.get(studentId) ?? 0) + 1);
     setFinalDrafts((current) => ({
       ...current,
       [studentId]: { ...current[studentId], [field]: value },
@@ -129,6 +132,7 @@ export function AcademicGradeEditor({ register }: { register: AcademicRegister }
   }
 
   async function saveActiveBlock(blockNumber: number) {
+    const savedVersions = new Map(edits.current);
     const changedStudents = register.students.filter((student) =>
       dirtyAcademicRows.has(getAcademicDraftKey(blockNumber, student.id)),
     );
@@ -183,12 +187,17 @@ export function AcademicGradeEditor({ register }: { register: AcademicRegister }
         rows,
       });
       toast.success(`Bloque ${blockNumber} guardado correctamente.`);
+      setDirtyAcademicRows((current) => new Set([...current].filter((key) =>
+        !changedStudents.some((student) => getAcademicDraftKey(blockNumber, student.id) === key)
+        || edits.current.get(key) !== savedVersions.get(key),
+      )));
     } catch (error) {
       showError(error, "No se pudo guardar el bloque académico.");
     }
   }
 
   async function saveSummary() {
+    const savedVersions = new Map(edits.current);
     const changedStudents = register.students.filter((student) => dirtyFinalRows.has(student.id));
 
     if (changedStudents.length === 0) {
@@ -215,6 +224,10 @@ export function AcademicGradeEditor({ register }: { register: AcademicRegister }
           ...finalDrafts[student.id],
         })),
       );
+      setDirtyFinalRows((current) => new Set([...current].filter((key) =>
+        !changedStudents.some((student) => student.id === key)
+        || edits.current.get(key) !== savedVersions.get(key),
+      )));
       toast.success("Evaluaciones finales guardadas correctamente.");
     } catch (error) {
       showError(error, "No se pudieron guardar las evaluaciones finales.");

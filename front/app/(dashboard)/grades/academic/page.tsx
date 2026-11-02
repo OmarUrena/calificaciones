@@ -179,7 +179,7 @@ export default function AcademicGradesPage() {
 
       {registerQuery.data ? (
         <AcademicGradeEditor
-          key={`${selectedCourseId}:${selectedSubjectId}:${registerQuery.dataUpdatedAt}`}
+          key={`${selectedCourseId}:${selectedSubjectId}`}
           register={registerQuery.data}
         />
       ) : null}

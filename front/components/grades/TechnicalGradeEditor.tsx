@@ -1,7 +1,7 @@
 "use client";
 
 import { Save } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { useSaveTechnicalLearningOutcome } from "@/hooks/use-technical-grades";
@@ -33,6 +33,7 @@ export function TechnicalGradeEditor({ register }: { register: TechnicalRegister
   );
   const [drafts, setDrafts] = useState<TechnicalDrafts>(() => createTechnicalDrafts(register));
   const [dirtyRows, setDirtyRows] = useState<Set<string>>(() => new Set());
+  const edits = useRef(new Map<string, number>());
   const saveLearningOutcome = useSaveTechnicalLearningOutcome(
     register.course.id,
     register.subject.id,
@@ -136,6 +137,7 @@ export function TechnicalGradeEditor({ register }: { register: TechnicalRegister
     if (!activeOutcome) return;
 
     const draftKey = getTechnicalDraftKey(activeOutcome.id, studentId);
+    edits.current.set(draftKey, (edits.current.get(draftKey) ?? 0) + 1);
     const minimum = getTechnicalMinimum(Number(activeOutcome.weight));
 
     setDrafts((current) => {
@@ -169,6 +171,7 @@ export function TechnicalGradeEditor({ register }: { register: TechnicalRegister
   }
 
   async function handleSave() {
+    const savedVersions = new Map(edits.current);
     if (!activeOutcome) {
       toast.info("Selecciona un RA para guardar calificaciones.");
       return;
@@ -233,6 +236,10 @@ export function TechnicalGradeEditor({ register }: { register: TechnicalRegister
         rows,
       });
       toast.success(`${activeOutcome.code} guardado correctamente.`);
+      setDirtyRows((current) => new Set([...current].filter((key) =>
+        !changedStudents.some((student) => getTechnicalDraftKey(activeOutcome.id, student.id) === key)
+        || edits.current.get(key) !== savedVersions.get(key),
+      )));
     } catch (error) {
       toast.error(
         error instanceof ApiError

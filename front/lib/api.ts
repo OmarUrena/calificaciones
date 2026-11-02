@@ -6,7 +6,8 @@ import type {
 } from "@/types/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
-const TOKEN_STORAGE_KEY = "califapp_token";
+import { getAccessToken, refreshAccessToken } from "@/lib/session";
+export { setStoredToken, clearStoredToken } from "@/lib/session";
 
 export class ApiError extends Error {
   status: number;
@@ -26,25 +27,8 @@ export function getApiBaseUrl() {
   return API_URL.replace(/\/$/, "");
 }
 
-export function getStoredToken() {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(TOKEN_STORAGE_KEY);
-}
-
-export function setStoredToken(token: string) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
-}
-
-export function clearStoredToken() {
-  if (typeof window === "undefined") return;
-  window.localStorage.removeItem(TOKEN_STORAGE_KEY);
-}
-
 export async function apiFetch<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
-  const response = await fetch(buildUrl(path), buildOptions(options)).catch(() => {
-    throw new ApiError(0, "NETWORK_ERROR", "No se pudo conectar con el servidor.");
-  });
+  const response = await authenticatedFetch(path, options);
 
   if (!response.ok) {
     throw await buildApiError(response);
@@ -58,9 +42,7 @@ export async function apiFetch<T>(path: string, options: ApiRequestOptions = {})
 }
 
 export async function downloadBlob(path: string, options: ApiRequestOptions = {}) {
-  const response = await fetch(buildUrl(path), buildOptions(options)).catch(() => {
-    throw new ApiError(0, "NETWORK_ERROR", "No se pudo descargar el archivo.");
-  });
+  const response = await authenticatedFetch(path, options);
 
   if (!response.ok) {
     throw await buildApiError(response);
@@ -91,9 +73,27 @@ function buildUrl(path: string) {
   return `${getApiBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+async function authenticatedFetch(path: string, options: ApiRequestOptions) {
+  const token = options.token ?? await getAccessToken().catch(() => {
+    throw new ApiError(0, "NETWORK_ERROR", "No se pudo renovar la sesión. Conserva esta página abierta e intenta guardar de nuevo.");
+  });
+  const send = (accessToken: string | null) =>
+    fetch(buildUrl(path), buildOptions({ ...options, token: accessToken })).catch(() => {
+      throw new ApiError(0, "NETWORK_ERROR", "No se pudo conectar con el servidor.");
+    });
+  const response = await send(token);
+  // A 401 is rejected by the auth guard before the write. Retry only once,
+  // preserving the body; never replay network errors or other HTTP errors.
+  if (response.status === 401 && token && options.token == null) {
+    const renewed = await refreshAccessToken(token).catch(() => null);
+    if (renewed) return send(renewed);
+  }
+  return response;
+}
+
 function buildOptions(options: ApiRequestOptions): RequestInit {
   const { token, headers, body, ...rest } = options;
-  const authToken = token ?? getStoredToken();
+  const authToken = token;
   const requestHeaders = new Headers(headers);
 
   if (authToken) {
@@ -139,6 +139,9 @@ function getErrorCode(status: number): ApiErrorCode {
 }
 
 function getErrorMessage(status: number, payload?: ApiErrorPayload) {
+  if (status === 401) {
+    return "No se pudo validar la sesión. Mantén esta página abierta, inicia sesión en otra pestaña con la misma cuenta y vuelve a guardar.";
+  }
   if (Array.isArray(payload?.message)) return payload.message.join(" ");
   if (payload?.message) return payload.message;
 

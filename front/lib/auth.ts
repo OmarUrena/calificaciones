@@ -1,14 +1,6 @@
-import { createClient } from "@supabase/supabase-js";
-
 import { apiFetch, clearStoredToken, setStoredToken } from "@/lib/api";
+import { supabase } from "@/lib/session";
 import type { CurrentUser, LoginCredentials, UserRole } from "@/types/auth";
-
-const TOKEN_COOKIE_NAME = "califapp_token";
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-const supabase =
-  supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
 export async function login(credentials: LoginCredentials) {
   if (!supabase) {
@@ -23,7 +15,6 @@ export async function login(credentials: LoginCredentials) {
 
   const token = data.session.access_token;
   setStoredToken(token);
-  setAuthCookie(token);
 
   try {
     const user = await getCurrentUser();
@@ -34,7 +25,6 @@ export async function login(credentials: LoginCredentials) {
     };
   } catch (error) {
     clearStoredToken();
-    clearAuthCookie();
     void supabase.auth.signOut();
     throw error;
   }
@@ -47,21 +37,10 @@ export async function getCurrentUser() {
 export function logout() {
   void supabase?.auth.signOut();
   clearStoredToken();
-  clearAuthCookie();
 }
 
 export function getRoleRedirectPath(role: UserRole) {
   if (role === "SUPER_ADMIN") return "/schools";
   if (role === "TEACHER") return "/my-subjects";
   return "/dashboard";
-}
-
-function setAuthCookie(token: string) {
-  if (typeof document === "undefined") return;
-  document.cookie = `${TOKEN_COOKIE_NAME}=${encodeURIComponent(token)}; path=/; max-age=604800; samesite=lax`;
-}
-
-function clearAuthCookie() {
-  if (typeof document === "undefined") return;
-  document.cookie = `${TOKEN_COOKIE_NAME}=; path=/; max-age=0; samesite=lax`;
 }

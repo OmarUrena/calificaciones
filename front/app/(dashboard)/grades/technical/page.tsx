@@ -183,7 +183,7 @@ export default function TechnicalGradesPage() {
         <>
           <TechnicalOutcomeSummary learningOutcomes={registerQuery.data.learningOutcomes} />
           <TechnicalGradeEditor
-            key={`${selectedCourseId}:${selectedSubjectId}:${registerQuery.dataUpdatedAt}`}
+            key={`${selectedCourseId}:${selectedSubjectId}`}
             register={registerQuery.data}
           />
         </>
