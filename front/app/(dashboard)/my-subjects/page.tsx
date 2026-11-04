@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 
 import { useCurrentUser } from "@/hooks/use-current-user";
+import { SubjectGradeReportDownload } from "@/components/grades/SubjectGradeReportDownload";
 import { useTeacherAssignments } from "@/hooks/use-teacher-assignments";
 import { cn } from "@/lib/utils";
 import type { TeacherAssignment } from "@/types/assignment";
@@ -28,9 +29,10 @@ export default function MySubjectsPage() {
       assignments.filter(
         (assignment) =>
           assignment.isActive &&
+          Boolean(user?.teacherId) && assignment.teacherId === user?.teacherId &&
           (!user?.activeSchoolYear || assignment.schoolYearId === user.activeSchoolYear.id),
       ),
-    [assignments, user?.activeSchoolYear],
+    [assignments, user?.activeSchoolYear, user?.teacherId],
   );
 
   const columns = useMemo<ColumnDef<TeacherAssignment>[]>(
@@ -86,7 +88,7 @@ export default function MySubjectsPage() {
       <div>
         <h1 className="institutional-title">Mis asignaturas</h1>
         <p className="institutional-subtitle">
-          Consulta tus cursos asignados y accede al registro o importación de calificaciones.
+          Consulta tus cursos asignados, registra o importa notas y descarga sus calificaciones en PDF.
         </p>
       </div>
 
@@ -197,6 +199,7 @@ function AssignmentActions({ assignment }: { assignment: TeacherAssignment }) {
         <FileUp aria-hidden="true" />
         Importar notas
       </ActionLink>
+      <SubjectGradeReportDownload assignment={assignment} />
     </div>
   );
 }

@@ -6,10 +6,29 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import { ReportCardQueryDto } from './dto/report-card-query.dto';
 import { ReportsService } from './reports.service';
+import { SubjectGradeReportQueryDto } from './dto/subject-grade-report-query.dto';
 
 @Controller('reports')
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
+
+  @Get('assignments/:assignmentId/grades')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TEACHER)
+  async generateSubjectGradeReport(
+    @Param('assignmentId') assignmentId: string,
+    @Query() query: SubjectGradeReportQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    const { buffer, filename } = await this.reportsService.generateSubjectGradeReport(
+      assignmentId,
+      query.period,
+      user,
+    );
+    return new StreamableFile(buffer, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${filename}"`,
+    });
+  }
 
   @Get('students/:studentId/report-card')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TEACHER)

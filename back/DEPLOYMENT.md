@@ -71,6 +71,16 @@ los inputs. La compilación debe seguir regenerando Prisma.
 
 ## Boletines PDF
 
+La sección «Mis asignaturas» también permite descargar registros de notas desde
+`GET /api/reports/assignments/:assignmentId/grades`. Para asignaturas académicas
+se requiere `?period=1` hasta `?period=4`; para técnicas se omite `period` y se
+genera el registro completo por RA. El docente debe tener una asignación activa
+en su propia escuela; esta descarga no requiere titularidad. Los boletines por
+estudiante y curso conservan sus permisos de titularidad existentes.
+
+Publicar backend y frontend para activar el botón y el endpoint. Usa el mismo
+Chromium y configuración de generación que los boletines; no requiere migración.
+
 En Vercel (`VERCEL=1`), el backend usa el Chromium Linux incluido en
 `@sparticuz/chromium`. El análisis de dependencias de Vercel incluye los archivos
 comprimidos de `node_modules/@sparticuz/chromium/bin`; el paquete los extrae a

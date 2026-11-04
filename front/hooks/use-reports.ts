@@ -1,6 +1,12 @@
 "use client";
 
-import { downloadBlob } from "@/lib/api";
+import { downloadBlob, downloadFile } from "@/lib/api";
+
+export async function downloadSubjectGradesReport(assignmentId: string, period?: number) {
+  const query = period === undefined ? "" : `?period=${period}`;
+  const { blob, filename } = await downloadFile(`/reports/assignments/${assignmentId}/grades${query}`);
+  saveReport(blob, filename ?? `calificaciones-${assignmentId}-${period ? `P${period}` : "por-RA"}.pdf`);
+}
 
 export async function downloadStudentReport(studentId: string, period: number) {
   await downloadReport(
@@ -18,6 +24,10 @@ export async function downloadCourseReports(courseId: string, period: number) {
 
 async function downloadReport(path: string, fileName: string) {
   const blob = await downloadBlob(path);
+  saveReport(blob, fileName);
+}
+
+function saveReport(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
 
@@ -28,6 +38,6 @@ async function downloadReport(path: string, fileName: string) {
     anchor.click();
   } finally {
     anchor.remove();
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 }

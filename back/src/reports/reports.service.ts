@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   AuditAction,
@@ -14,6 +19,7 @@ import { PermissionsService } from '../common/services/permissions.service';
 import { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import { PrismaService } from '../prisma/prisma.service';
 import { launchReportBrowser } from './report-browser';
+import { buildSubjectGradeReportHtml, subjectGradeReportFilename } from './subject-grade-report';
 
 type ReportStudent = Prisma.StudentGetPayload<{
   include: {
@@ -108,7 +114,9 @@ export class ReportsService {
       course.students.map((student) => this.getStudentReportData(student.id)),
     );
     const html = this.buildDocumentHtml(
-      studentReports.flatMap((studentReport) => this.buildStudentReportPages(studentReport, period)),
+      studentReports.flatMap((studentReport) =>
+        this.buildStudentReportPages(studentReport, period),
+      ),
     );
     const pdf = await this.renderPdf(html);
 
@@ -126,6 +134,107 @@ export class ReportsService {
     });
 
     return pdf;
+  }
+
+  async generateSubjectGradeReport(
+    assignmentId: string,
+    period: number | undefined,
+    user: AuthenticatedUser,
+  ) {
+    if (user.role === UserRole.TEACHER && !user.teacherId) {
+      throw new ForbiddenException('Tu usuario no está vinculado a un maestro.');
+    }
+    const assignment = await this.prisma.teacherAssignment.findFirst({
+      where: {
+        id: assignmentId,
+        isActive: true,
+        ...(user.role === UserRole.SUPER_ADMIN ? {} : { schoolId: user.schoolId ?? '' }),
+        ...(user.role === UserRole.TEACHER ? { teacherId: user.teacherId! } : {}),
+      },
+      include: { school: true, schoolYear: true, course: true, subject: true, teacher: true },
+    });
+    if (!assignment)
+      throw new NotFoundException('La asignatura no está disponible para tu usuario.');
+    this.permissionsService.ensureCanAccessSchool(user, assignment.schoolId);
+    const academic = assignment.subject.type === SubjectType.ACADEMIC;
+    if (academic && (!Number.isInteger(period) || period! < 1 || period! > 4)) {
+      throw new BadRequestException('Selecciona un período entre P1 y P4.');
+    }
+    if (!academic && period !== undefined) {
+      throw new BadRequestException('Las asignaturas técnicas se generan por RA, sin período.');
+    }
+    const where = {
+      schoolId: assignment.schoolId,
+      schoolYearId: assignment.schoolYearId,
+      courseId: assignment.courseId,
+      subjectId: assignment.subjectId,
+    };
+    const students = await this.prisma.student.findMany({
+      where: {
+        schoolId: where.schoolId,
+        schoolYearId: where.schoolYearId,
+        courseId: where.courseId,
+      },
+      orderBy: { listNumber: 'asc' },
+    });
+    const identity = {
+      school: assignment.school.name,
+      schoolYear: assignment.schoolYear.name,
+      course: assignment.course.name,
+      subject: assignment.subject.name,
+      teacher: assignment.teacher.name,
+      students,
+    };
+    let html: string;
+    if (academic) {
+      const grades = await this.prisma.academicGrade.findMany({
+        where,
+        orderBy: [{ student: { listNumber: 'asc' } }, { blockNumber: 'asc' }],
+      });
+      html = buildSubjectGradeReportHtml({
+        ...identity,
+        type: 'ACADEMIC',
+        period: period!,
+        grades,
+        blockTitles: [1, 2, 3, 4].map((block) => this.academicBlockTitle(block)),
+      });
+    } else {
+      const [grades, outcomes] = await Promise.all([
+        this.prisma.technicalGrade.findMany({ where }),
+        this.prisma.technicalLearningOutcome.findMany({
+          where: {
+            schoolId: where.schoolId,
+            subjectId: where.subjectId,
+            OR: [{ isActive: true }, { technicalGrades: { some: where } }],
+          },
+          orderBy: [{ order: 'asc' }, { code: 'asc' }],
+        }),
+      ]);
+      html = buildSubjectGradeReportHtml({ ...identity, type: 'TECHNICAL', grades, outcomes });
+    }
+    const buffer = await this.renderPdf(html);
+    await this.auditService.log({
+      schoolId: assignment.schoolId,
+      userId: user.id,
+      entity: 'TeacherAssignment',
+      entityId: assignment.id,
+      action: AuditAction.GENERATE_REPORT,
+      newValue: {
+        report: 'subject-grade-register',
+        courseId: assignment.courseId,
+        subjectId: assignment.subjectId,
+        period: academic ? period : null,
+        studentCount: students.length,
+      },
+    });
+    return {
+      buffer,
+      filename: subjectGradeReportFilename(
+        identity.course,
+        identity.subject,
+        academic ? period : undefined,
+      ),
+    };
   }
 
   private async ensureCanGenerateCourseReports(
@@ -403,7 +512,9 @@ export class ReportsService {
         <tbody>${detailRows.join('')}</tbody>
       </table>
 
-      ${period === 4 ? `
+      ${
+        period === 4
+          ? `
       <h3>Promedios por bloque y resultado final</h3>
       <table class="academic-summary">
         <thead>
@@ -415,7 +526,9 @@ export class ReportsService {
         </thead>
         <tbody>${summaryRows.join('')}</tbody>
       </table>
-      ` : ''}
+      `
+          : ''
+      }
     `;
   }
 
