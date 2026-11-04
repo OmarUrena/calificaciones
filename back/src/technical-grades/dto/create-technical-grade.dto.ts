@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsUUID, Min } from 'class-validator';
+import { IsInt, IsOptional, IsUUID, Min } from 'class-validator';
 
 export class CreateTechnicalGradeDto {
   @IsUUID()
@@ -20,22 +20,22 @@ export class CreateTechnicalGradeDto {
   learningOutcomeId: string;
 
   @IsOptional()
-  @IsNumber()
+  @IsInt({ message: 'La calificación debe ser un número entero.' })
   @Min(0)
   ordinaryScore?: number;
 
   @IsOptional()
-  @IsNumber()
+  @IsInt({ message: 'La calificación debe ser un número entero.' })
   @Min(0)
   recovery1Score?: number;
 
   @IsOptional()
-  @IsNumber()
+  @IsInt({ message: 'La calificación debe ser un número entero.' })
   @Min(0)
   recovery2Score?: number;
 
   @IsOptional()
-  @IsNumber()
+  @IsInt({ message: 'La calificación debe ser un número entero.' })
   @Min(0)
   specialScore?: number;
 }

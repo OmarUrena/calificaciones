@@ -10,6 +10,7 @@ import { AuditService } from '../audit/audit.service';
 import { PermissionsService } from '../common/services/permissions.service';
 import { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import { rethrowKnownPrismaError } from '../common/utils/prisma-error.util';
+import { ensureIntegerGrade } from '../common/utils/integer-grade.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { AcademicFinalEvaluationDto } from './dto/academic-final-evaluation.dto';
 import { BulkAcademicGradesDto } from './dto/bulk-academic-grades.dto';
@@ -228,6 +229,9 @@ export class AcademicGradesService {
   }
 
   async finalEvaluations(dto: AcademicFinalEvaluationDto, user: AuthenticatedUser) {
+    for (const field of ['cec', 'ceex', 'ce'] as const) {
+      ensureIntegerGrade(field.toUpperCase(), dto[field]);
+    }
     const context = await this.getContextByStudentAndSubject(dto.studentId, dto.subjectId, user);
     const current = await this.recalculateResult(context, user.id);
     const cf = current.cf;
@@ -615,6 +619,9 @@ export class AcademicGradesService {
   }
 
   private validateScoreRules(scores: AcademicScoreFields): void {
+    for (const field of ['p1', 'rp1', 'p2', 'rp2', 'p3', 'rp3', 'p4', 'rp4'] as const) {
+      ensureIntegerGrade(field.toUpperCase(), scores[field]);
+    }
     this.validateRecovery('RP1', scores.p1, scores.rp1);
     this.validateRecovery('RP2', scores.p2, scores.rp2);
     this.validateRecovery('RP3', scores.p3, scores.rp3);

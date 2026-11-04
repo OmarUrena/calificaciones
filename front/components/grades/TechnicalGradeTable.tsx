@@ -115,7 +115,8 @@ export function TechnicalGradeTable({
                             onScoreChange(student.id, field, parseGradeInput(event.target.value))
                           }
                           placeholder={disabled ? "N/A" : "—"}
-                          step="0.01"
+                          step={1}
+                          inputMode="numeric"
                           title={error ?? (disabled ? getDisabledReason(field) : undefined)}
                           type="number"
                           value={scores[field] ?? ""}

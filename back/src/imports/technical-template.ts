@@ -25,7 +25,11 @@ export function formatTechnicalTemplate(
   courseName: string,
   subjectName: string,
   listNumbers: number[],
-  outcomes: Array<{ code: string; name?: string }>,
+  outcomes: Array<{
+    code: string;
+    name?: string;
+    weight?: number | string | { toString(): string };
+  }>,
 ) {
   const lastColumn = 1 + outcomes.length * 4;
   sheet.getColumn(1).width = 16;
@@ -52,7 +56,7 @@ export function formatTechnicalTemplate(
   sheet.getRow(3).height = 31;
   sheet.getRow(4).height = 28;
 
-  outcomes.forEach(({ code, name }, index) => {
+  outcomes.forEach(({ code, name, weight }, index) => {
     const firstColumn = 2 + index * 4;
     const color = GROUP_COLORS[index];
     sheet.mergeCells(3, firstColumn, 3, firstColumn + 3);
@@ -79,7 +83,18 @@ export function formatTechnicalTemplate(
         data.fill = solid(tint(color, 0.94 - attempt * 0.06));
         data.border = columnBorder(attempt, color);
         data.alignment = { horizontal: 'center', vertical: 'middle' };
-        data.numFmt = '0.##';
+        data.numFmt = '0';
+        const maximum = Math.floor(Number(weight ?? 100));
+        data.dataValidation = {
+          type: 'whole',
+          operator: 'between',
+          formulae: [0, maximum],
+          allowBlank: true,
+          showErrorMessage: true,
+          errorStyle: 'stop',
+          errorTitle: 'Calificación no válida',
+          error: `Ingresa un número entero entre 0 y ${maximum}.`,
+        };
       });
     });
   });

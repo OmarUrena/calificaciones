@@ -63,8 +63,8 @@ export function validateAcademicScores(scores: AcademicScoreValues): Partial<Rec
 
   for (const field of ACADEMIC_SCORE_FIELDS) {
     const score = scores[field];
-    if (score !== null && (score < 0 || score > 100)) {
-      errors[field] = "Debe estar entre 0 y 100.";
+    if (score !== null && (!Number.isInteger(score) || score < 0 || score > 100)) {
+      errors[field] = "Debe ser un entero entre 0 y 100.";
     }
   }
 

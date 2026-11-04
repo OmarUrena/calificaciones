@@ -101,7 +101,19 @@ export function formatAcademicTemplate(
       );
       cell.border = columnBorder(columnNumber);
       cell.alignment = { horizontal: 'center', vertical: 'middle' };
-      if (columnNumber > 1) cell.numFmt = '0.##';
+      if (columnNumber > 1) {
+        cell.numFmt = '0';
+        cell.dataValidation = {
+          type: 'whole',
+          operator: 'between',
+          formulae: [0, 100],
+          allowBlank: true,
+          showErrorMessage: true,
+          errorStyle: 'stop',
+          errorTitle: 'Calificación no válida',
+          error: 'Ingresa un número entero entre 0 y 100.',
+        };
+      }
     }
   });
 

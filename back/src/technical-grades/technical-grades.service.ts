@@ -5,6 +5,7 @@ import { AuditService } from '../audit/audit.service';
 import { PermissionsService } from '../common/services/permissions.service';
 import { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import { rethrowKnownPrismaError } from '../common/utils/prisma-error.util';
+import { ensureIntegerGrade } from '../common/utils/integer-grade.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { BulkTechnicalGradesDto } from './dto/bulk-technical-grades.dto';
 import { CreateTechnicalGradeDto } from './dto/create-technical-grade.dto';
@@ -446,13 +447,7 @@ export class TechnicalGradesService {
     score: number | null | undefined,
     weight: number,
   ): void {
-    if (score === null || score === undefined) {
-      return;
-    }
-
-    if (score > weight) {
-      throw new BadRequestException(`${label} cannot be greater than the RA weight.`);
-    }
+    ensureIntegerGrade(label, score, weight);
   }
 
   private validateRecoverySequence(scores: TechnicalScoreFields, weight: number): void {

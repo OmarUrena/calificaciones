@@ -13,6 +13,7 @@ import { UpdateAcademicGradeDto } from '../academic-grades/dto/update-academic-g
 import { AuditService } from '../audit/audit.service';
 import { PermissionsService } from '../common/services/permissions.service';
 import { AuthenticatedUser } from '../common/types/authenticated-user.type';
+import { ensureIntegerGrade } from '../common/utils/integer-grade.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTechnicalGradeDto } from '../technical-grades/dto/create-technical-grade.dto';
 import { UpdateTechnicalGradeDto } from '../technical-grades/dto/update-technical-grade.dto';
@@ -280,14 +281,15 @@ export class ImportsService {
     this.ensureSelectedSubject(context, subject.id);
     let importedBlocks = 0;
 
-    for (const blockNumber of [1, 2, 3, 4]) {
-      const gradeDto = this.buildAcademicGradeDto(
-        row,
-        context,
-        student.id,
-        subject.id,
-        blockNumber,
-      );
+    const gradeDtos = [1, 2, 3, 4].map((blockNumber) =>
+      this.buildAcademicGradeDto(row, context, student.id, subject.id, blockNumber),
+    );
+    const cec = this.optionalIntegerGrade(row, 'cec');
+    const ceex = this.optionalIntegerGrade(row, 'ceex');
+    const ce = this.optionalIntegerGrade(row, 'ce');
+
+    for (const gradeDto of gradeDtos) {
+      const blockNumber = gradeDto.blockNumber;
 
       if (!this.hasAcademicScores(gradeDto)) {
         continue;
@@ -322,10 +324,6 @@ export class ImportsService {
     if (importedBlocks === 0) {
       throw new BadRequestException('No academic grade columns were provided.');
     }
-
-    const cec = this.optionalNumber(row, 'cec');
-    const ceex = this.optionalNumber(row, 'ceex');
-    const ce = this.optionalNumber(row, 'ce');
 
     if (cec !== undefined || ceex !== undefined || ce !== undefined) {
       await this.academicGradesService.finalEvaluations(
@@ -368,8 +366,9 @@ export class ImportsService {
       specialScore: number;
     }> = [];
 
-    for (const learningOutcome of learningOutcomes) {
-      const baseDto = this.buildTechnicalGradeDto(
+    const preparedOutcomes = learningOutcomes.map((learningOutcome) => ({
+      learningOutcome,
+      baseDto: this.buildTechnicalGradeDto(
         row,
         context,
         student.id,
@@ -377,13 +376,14 @@ export class ImportsService {
         learningOutcome.id,
         learningOutcome.code,
         false,
-      );
-
-      const specialScore = this.optionalNumber(
+      ),
+      specialScore: this.optionalIntegerGrade(
         row,
         `${this.normalizeHeader(learningOutcome.code)}_esp`,
-      );
+      ),
+    }));
 
+    for (const { learningOutcome, baseDto, specialScore } of preparedOutcomes) {
       if (!this.hasTechnicalScores(baseDto) && specialScore === undefined) {
         continue;
       }
@@ -737,6 +737,7 @@ export class ImportsService {
       ],
       ['Las celdas de notas vacías conservan los valores existentes.'],
       ['Las notas se validan con las mismas reglas del registro de calificaciones.'],
+      ['Las calificaciones deben ser números enteros. Por ejemplo: 90 o 90.0 son válidos; 90.5 no se admite.'],
       [
         'Académicas: incluye al menos una nota de bloque por fila, también al cargar evaluaciones finales.',
       ],
@@ -869,14 +870,14 @@ export class ImportsService {
       studentId,
       subjectId,
       blockNumber,
-      p1: this.optionalNumber(row, `${prefix}_p1`),
-      rp1: this.optionalNumber(row, `${prefix}_rp1`),
-      p2: this.optionalNumber(row, `${prefix}_p2`),
-      rp2: this.optionalNumber(row, `${prefix}_rp2`),
-      p3: this.optionalNumber(row, `${prefix}_p3`),
-      rp3: this.optionalNumber(row, `${prefix}_rp3`),
-      p4: this.optionalNumber(row, `${prefix}_p4`),
-      rp4: this.optionalNumber(row, `${prefix}_rp4`),
+      p1: this.optionalIntegerGrade(row, `${prefix}_p1`),
+      rp1: this.optionalIntegerGrade(row, `${prefix}_rp1`),
+      p2: this.optionalIntegerGrade(row, `${prefix}_p2`),
+      rp2: this.optionalIntegerGrade(row, `${prefix}_rp2`),
+      p3: this.optionalIntegerGrade(row, `${prefix}_p3`),
+      rp3: this.optionalIntegerGrade(row, `${prefix}_rp3`),
+      p4: this.optionalIntegerGrade(row, `${prefix}_p4`),
+      rp4: this.optionalIntegerGrade(row, `${prefix}_rp4`),
     };
   }
 
@@ -902,10 +903,10 @@ export class ImportsService {
       studentId,
       subjectId,
       learningOutcomeId,
-      ordinaryScore: this.optionalNumber(row, key),
-      recovery1Score: this.optionalNumber(row, `${key}_r1`),
-      recovery2Score: this.optionalNumber(row, `${key}_r2`),
-      specialScore: includeSpecial ? this.optionalNumber(row, `${key}_esp`) : undefined,
+      ordinaryScore: this.optionalIntegerGrade(row, key),
+      recovery1Score: this.optionalIntegerGrade(row, `${key}_r1`),
+      recovery2Score: this.optionalIntegerGrade(row, `${key}_r2`),
+      specialScore: includeSpecial ? this.optionalIntegerGrade(row, `${key}_esp`) : undefined,
     };
   }
 
@@ -960,6 +961,12 @@ export class ImportsService {
       throw new BadRequestException(`${key} obligatorio.`);
     }
 
+    return value;
+  }
+
+  private optionalIntegerGrade(row: ImportRow, key: string): number | undefined {
+    const value = this.optionalNumber(row, key);
+    ensureIntegerGrade(key.toUpperCase(), value);
     return value;
   }
 

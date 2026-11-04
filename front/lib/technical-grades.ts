@@ -32,8 +32,8 @@ export function validateTechnicalScores(
 
   for (const field of TECHNICAL_SCORE_FIELDS) {
     const score = scores[field];
-    if (score !== null && (score < 0 || score > weight)) {
-      errors[field] = `Debe estar entre 0 y ${formatTechnicalScore(weight)}.`;
+    if (score !== null && (!Number.isInteger(score) || score < 0 || score > weight)) {
+      errors[field] = `Debe ser un entero entre 0 y ${formatTechnicalScore(weight)}.`;
     }
   }
 

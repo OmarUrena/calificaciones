@@ -19,6 +19,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "db:check": "tsx scripts/check-db.ts",
+    "grades:check-integers": "node scripts/integer-grades.cjs",
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {

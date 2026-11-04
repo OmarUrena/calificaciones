@@ -214,6 +214,8 @@ model TeacherAssignment {
 }
 
 model AcademicGrade {
+  // Whole-number inputs are enforced by academic_grades_integer_scores.
+  // Numeric storage preserves historical fractional grades pending manual review.
   id           String     @id @default(uuid())
   schoolId     String
   schoolYearId String
@@ -305,6 +307,8 @@ model TechnicalLearningOutcome {
 }
 
 model TechnicalGrade {
+  // Whole-number inputs are enforced by technical_grades_integer_scores.
+  // Calculated scores and RA weights keep their existing precision.
   id                String                   @id @default(uuid())
   schoolId          String
   schoolYearId      String

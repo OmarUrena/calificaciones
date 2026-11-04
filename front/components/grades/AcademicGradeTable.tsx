@@ -114,7 +114,8 @@ export function AcademicGradeTable({
                             onScoreChange(student.id, field, parseGradeInput(event.target.value))
                           }
                           placeholder={!periodClosed && disabled ? "N/A" : "—"}
-                          step="0.01"
+                          step={1}
+                          inputMode="numeric"
                           title={periodClosed
                             ? "Período desactivado por administración. No se puede modificar."
                             : error ?? (disabled ? "La recuperación no aplica." : undefined)}

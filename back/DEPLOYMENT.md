@@ -24,6 +24,47 @@ Después del despliegue, comprobar con una sesión administrativa que
 `p4Enabled` y `rp1Enabled` a `rp4Enabled`. El frontend informa si faltan estos
 estados en lugar de mostrarlos todos como inactivos.
 
+## Calificaciones ingresadas enteras
+
+Las notas ingresadas (P/RP, ordinaria, recuperaciones y especial) deben ser
+enteros. Un valor numérico `90.0` equivale a `90` y se acepta; `90.5` se rechaza.
+Los promedios PC, sumatorias y pesos de RA conservan su precisión y reglas.
+
+Los inputs usan paso de 1, las validaciones del cliente y del servidor rechazan
+fracciones, y las plantillas de Excel solicitan números enteros. El importador
+valida todos los campos numéricos de la fila antes de escribir sus notas para
+evitar que un decimal en un bloque o RA posterior guarde notas anteriores.
+
+Auditoría de datos, sin modificaciones:
+
+```sh
+npm run grades:check-integers
+npm run grades:check-integers -- --details
+npm run grades:check-integers -- --report
+```
+
+El informe local se guarda en `artifacts/notas-decimales-para-revision.csv`, fuera
+del control de versiones porque contiene datos de estudiantes. El 2026-11-04 se
+identificaron 23 notas con fracciones (10 académicas y 13 técnicas). Por petición
+del usuario se conservan para revisión, sin redondearlas ni recalcular resultados.
+
+La migración `20261104130000_integer_grade_constraints` usa dos restricciones
+`CHECK ... NOT VALID`: conserva las excepciones históricas y exige enteros en
+cualquier fila insertada o actualizada. Una fila con notas históricas fraccionarias
+necesita corregirse explícitamente antes de guardarse otra vez. Las consultas y
+boletines siguen mostrando sus valores originales.
+
+No convertir aún esas columnas a `Int`. Después de revisar y corregir todas las
+excepciones, volver a ejecutar la auditoría, validar las restricciones y preparar
+la conversión de tipos. Los promedios calculados no deben convertirse a enteros.
+
+Para aplicar únicamente esta migración con comprobaciones y prueba SQL en tablas
+temporales, se puede usar `node scripts/integer-grades.cjs deploy`. El comando
+se detiene si encuentra otras migraciones pendientes; no corrige ninguna nota.
+
+Publicar backend y frontend para activar también las validaciones y el paso de
+los inputs. La compilación debe seguir regenerando Prisma.
+
 ## Boletines PDF
 
 En Vercel (`VERCEL=1`), el backend usa el Chromium Linux incluido en

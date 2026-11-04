@@ -158,6 +158,7 @@ function EvaluationInputCell({
         onChange={(event) => onChange(parseGradeInput(event.target.value))}
         placeholder={disabled ? "N/A" : "—"}
         step={1}
+        inputMode="numeric"
         title={error ?? (disabled ? "Esta evaluación aún no aplica." : undefined)}
         type="number"
         value={value ?? ""}
