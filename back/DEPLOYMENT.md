@@ -71,10 +71,17 @@ los inputs. La compilación debe seguir regenerando Prisma.
 
 ## Boletines PDF
 
-La sección «Mis asignaturas» también permite descargar registros de notas desde
-`GET /api/reports/assignments/:assignmentId/grades`. Para asignaturas académicas
-se requiere `?period=1` hasta `?period=4`; para técnicas se omite `period` y se
-genera el registro completo por RA. El docente debe tener una asignación activa
+La sección «Mis asignaturas» permite abrir «PDF de calificaciones» y marcar
+uno o varios períodos o RA. `GET /api/reports/assignments/:assignmentId/grades`
+recibe períodos con parámetros repetidos, por ejemplo `?periods=1&periods=3`,
+o RA con `?outcomeIds=<id1>&outcomeIds=<id2>`. Solo se exporta la selección.
+`GET /api/reports/assignments/:assignmentId/grade-options` lista los RA disponibles,
+incluidos RA históricos con notas del mismo curso. Se conserva `period` como
+parámetro compatible para clientes anteriores.
+
+Estos PDF se generan en carta vertical, con casillas de notas de 7 mm, tipografía
+compacta y tablas con hasta dos períodos académicos o cuatro RA. Los boletines
+individuales y por curso conservan su formato horizontal. El docente debe tener una asignación activa
 en su propia escuela; esta descarga no requiere titularidad. Los boletines por
 estudiante y curso conservan sus permisos de titularidad existentes.
 

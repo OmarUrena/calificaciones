@@ -23,11 +23,21 @@ export class ReportsController {
       assignmentId,
       query.period,
       user,
+      query,
     );
     return new StreamableFile(buffer, {
       type: 'application/pdf',
       disposition: `attachment; filename="${filename}"`,
     });
+  }
+
+  @Get('assignments/:assignmentId/grade-options')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TEACHER)
+  subjectGradeReportOptions(
+    @Param('assignmentId') assignmentId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.reportsService.subjectGradeReportOptions(assignmentId, user);
   }
 
   @Get('students/:studentId/report-card')

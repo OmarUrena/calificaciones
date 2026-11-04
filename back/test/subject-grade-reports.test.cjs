@@ -85,6 +85,36 @@ test('zero scores are preserved and missing scores remain distinguishable', asyn
   assert.doesNotMatch(rendered[0], /<td>11<\/td>|<td>33<\/td>|<td>44<\/td>/);
 });
 
+test('multiple selected periods include only those periods and reject empty or ambiguous choices', async () => {
+  const { service, rendered, audit } = fixture();
+  const report = await service.generateSubjectGradeReport('assignment', undefined, teacher, { periods: [3, 1] });
+  assert.equal(report.filename, 'calificaciones-5to-A-Matematicas-P1-P3.pdf');
+  assert.match(rendered[0], /<th>P1<\/th>/);
+  assert.match(rendered[0], /<th>P3<\/th>/);
+  assert.doesNotMatch(rendered[0], /<th>(?:P|RP)[24]<\/th>/);
+  assert.deepEqual(audit[0].newValue.periods, [1, 3]);
+  for (const selection of [{ periods: [] }, { periods: [1, 1] }, { periods: [5] }, { periods: [1.5] }, { periods: [1], outcomeIds: ['ra1'] }]) {
+    await assert.rejects(() => service.generateSubjectGradeReport('assignment', undefined, teacher, selection), (error) => error.getStatus() === 400);
+  }
+  await assert.rejects(() => service.generateSubjectGradeReport('assignment', 1, teacher, { periods: [2] }), (error) => error.getStatus() === 400);
+});
+
+test('RA options and exports are assignment-scoped and never include an unselected RA', async () => {
+  const { service, rendered, queries, audit } = fixture('TECHNICAL');
+  const options = await service.subjectGradeReportOptions('assignment', teacher);
+  assert.deepEqual(options.outcomes.map((outcome) => outcome.id), ['ra1', 'ra2']);
+  const report = await service.generateSubjectGradeReport('assignment', undefined, teacher, { outcomeIds: ['ra2'] });
+  assert.equal(report.filename, 'calificaciones-5to-A-Matematicas-RA2.pdf');
+  assert.match(rendered[0], /RA2/);
+  assert.doesNotMatch(rendered[0], /RA1/);
+  assert.deepEqual(queries.find((entry) => entry.name === 'technical').query.where, { ...scope, learningOutcomeId: { in: ['ra2'] } });
+  assert.deepEqual(audit[0].newValue.outcomeIds, ['ra2']);
+  for (const outcomeIds of [[], ['not-this-subject'], ['ra1', 'ra1']]) {
+    await assert.rejects(() => service.generateSubjectGradeReport('assignment', undefined, teacher, { outcomeIds }), (error) => error.getStatus() === 400);
+  }
+  await assert.rejects(() => service.subjectGradeReportOptions('assignment', { ...teacher, teacherId: 'other-teacher' }), (error) => error.getStatus() === 404);
+});
+
 test('unlinked, different-school, different-teacher and inactive assignments stop before reading grades', async () => {
   for (const [actor, overrides, status] of [
     [{ ...teacher, teacherId: null }, {}, 403],
@@ -130,7 +160,7 @@ test('HTML safely escapes identities and paginates long rosters and fourteen RA 
   const outcomes = Array.from({ length: 14 }, (_, index) => ({ id: `ra${index}`, code: `RA${index + 1}`, name: `Resultado ${index + 1}`, weight: 10 }));
   const html = buildSubjectGradeReportHtml({ school: '<script>Escuela</script>', schoolYear: '2026-2027', course: '5to A',
     subject: 'Matemática & lógica', teacher: '<img src=x>', students, type: 'TECHNICAL', grades: [], outcomes });
-  assert.equal((html.match(/<section class="page">/g) ?? []).length, 15);
+  assert.equal((html.match(/<section class="page">/g) ?? []).length, 8);
   assert.match(html, /&lt;script&gt;Escuela&lt;\/script&gt;/);
   assert.doesNotMatch(html, /<script>|<img src=x>/);
   assert.match(html, /Matemática &amp; lógica/);
@@ -143,7 +173,7 @@ test('empty rosters and modules produce readable PDFs instead of empty files', a
     students: [], type: 'TECHNICAL', grades: [], outcomes: [] });
   assert.match(html, /No hay RA registrados/);
   const renderer = new ReportsService({}, {}, {}, { get: () => undefined });
-  const pdf = await renderer.renderPdf(html);
+  const pdf = await renderer.renderPdf(html, false);
   assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
   assert.match(pdf.subarray(-100).toString(), /%%EOF/);
 });
@@ -154,23 +184,33 @@ test('populated academic and technical tables fit the printable width and render
   const identity = { school: 'Centro educativo de prueba', schoolYear: '2026-2027', course: '5to A', subject: 'Matemática', teacher: 'Docente de prueba', students };
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage({ viewport: { width: 980, height: 740 } });
+    const page = await browser.newPage({ viewport: { width: 740, height: 980 } });
     await page.emulateMedia({ media: 'print' });
     for (const type of ['ACADEMIC', 'TECHNICAL']) {
       const data = type === 'ACADEMIC'
-        ? { ...identity, type, period: 3, grades: [], blockTitles: ['Comunicativa', 'Pensamiento lógico, creativo y crítico', 'Científica y tecnológica', 'Ética y ciudadanía'] }
+        ? { ...identity, type, periods: [1, 2, 3, 4], grades: [], blockTitles: ['Comunicativa', 'Pensamiento lógico, creativo y crítico', 'Científica y tecnológica', 'Ética y ciudadanía'] }
         : { ...identity, type, grades: [], outcomes: Array.from({ length: 14 }, (_, index) => ({ id: `ra-${index}`, code: `RA${index + 1}`,
           name: `Resultado de aprendizaje ${index + 1}`, weight: 10 })) };
+      data.grades = type === 'ACADEMIC'
+        ? students.flatMap((student) => [1, 2, 3, 4].map((blockNumber) => ({ studentId: student.id, blockNumber,
+          p1: 85.94, rp1: null, p2: 90, rp2: null, p3: 79, rp3: null, p4: 100, rp4: null })))
+        : students.flatMap((student) => data.outcomes.map((outcome) => ({ studentId: student.id, learningOutcomeId: outcome.id,
+          ordinaryScore: 8, recovery1Score: null, recovery2Score: null, specialScore: null, validScore: 8 })));
       await page.setContent(buildSubjectGradeReportHtml(data));
-      assert.equal(await page.locator('tbody tr').count(), type === 'ACADEMIC' ? 30 : 150);
-      assert.equal(await page.evaluate(() => [...document.querySelectorAll('table')].every((table) => table.getBoundingClientRect().right <= 981)), true);
-      const pdf = await page.pdf({ format: 'Letter', landscape: true, printBackground: true, margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' } });
+      assert.equal(await page.locator('tbody tr').count(), type === 'ACADEMIC' ? 60 : 120);
+      assert.equal(await page.evaluate(() => [...document.querySelectorAll('table')].every((table) => table.getBoundingClientRect().right <= 741)), true);
+      assert.equal(await page.evaluate(() => [...document.querySelectorAll('.score-column')].every((column) => column.getBoundingClientRect().width <= 27)), true);
+      assert.equal(await page.evaluate(() => [...document.querySelectorAll('tbody td:not(.student)')].every((cell) => {
+        const range = document.createRange(); range.selectNodeContents(cell); return range.getClientRects().length <= 1;
+      })), true, 'Numeric values must remain on one line in the compact cells');
+      const pdf = await page.pdf({ format: 'Letter', landscape: false, printBackground: true, margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' } });
       assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+      assert.match(pdf.toString('latin1'), /\/MediaBox\s*\[0 0 612 792\]/);
       assert.ok(pdf.length > 10000);
       if (type === 'TECHNICAL') {
         const cache = resolve(__dirname, '../node_modules/.cache');
         mkdirSync(cache, { recursive: true });
-        await page.screenshot({ path: resolve(cache, 'subject-grade-report-preview.png'), clip: { x: 0, y: 0, width: 980, height: 740 } });
+        await page.screenshot({ path: resolve(cache, 'subject-grade-report-preview.png'), clip: { x: 0, y: 0, width: 740, height: 980 } });
       }
     }
   } finally { await browser.close(); }
@@ -198,12 +238,19 @@ test('HTTP subject-grade route downloads PDF bytes and validates optional period
     assert.match(response.headers.get('content-type'), /application\/pdf/);
     assert.match(response.headers.get('content-disposition'), /Matematicas-P2.pdf/);
     assert.deepEqual(Buffer.from(await response.arrayBuffer()), pdf);
-    assert.deepEqual(calls[0], ['assignment', 2, teacher]);
+    assert.deepEqual(calls[0].slice(0, 3), ['assignment', 2, teacher]);
     for (const value of ['0', '5', '1.5', 'abc']) {
       assert.equal((await fetch(`${origin}/api/reports/assignments/assignment/grades?period=${value}`)).status, 400);
     }
     assert.equal((await fetch(`${origin}/api/reports/assignments/assignment/grades`)).status, 200);
     assert.equal(calls[1][1], undefined);
     assert.equal(calls.length, 2);
+    assert.equal((await fetch(`${origin}/api/reports/assignments/assignment/grades?periods=1&periods=3`)).status, 200);
+    assert.deepEqual(calls.at(-1)[3].periods, [1, 3]);
+    assert.equal((await fetch(`${origin}/api/reports/assignments/assignment/grades?outcomeIds=ra1&outcomeIds=ra2`)).status, 200);
+    assert.deepEqual(calls.at(-1)[3].outcomeIds, ['ra1', 'ra2']);
+    for (const query of ['periods=1&periods=1', 'periods=1.5', 'periods=5', 'outcomeIds=', 'outcomeIds=ra1&outcomeIds=ra1']) {
+      assert.equal((await fetch(`${origin}/api/reports/assignments/assignment/grades?${query}`)).status, 400);
+    }
   } finally { await app.close(); }
 });

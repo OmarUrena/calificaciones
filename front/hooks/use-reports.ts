@@ -2,10 +2,12 @@
 
 import { downloadBlob, downloadFile } from "@/lib/api";
 
-export async function downloadSubjectGradesReport(assignmentId: string, period?: number) {
-  const query = period === undefined ? "" : `?period=${period}`;
-  const { blob, filename } = await downloadFile(`/reports/assignments/${assignmentId}/grades${query}`);
-  saveReport(blob, filename ?? `calificaciones-${assignmentId}-${period ? `P${period}` : "por-RA"}.pdf`);
+export async function downloadSubjectGradesReport(assignmentId: string, selection: { periods?: number[]; outcomeIds?: string[] }) {
+  const query = new URLSearchParams();
+  selection.periods?.forEach((period) => query.append("periods", String(period)));
+  selection.outcomeIds?.forEach((id) => query.append("outcomeIds", id));
+  const { blob, filename } = await downloadFile(`/reports/assignments/${assignmentId}/grades?${query}`);
+  saveReport(blob, filename ?? `calificaciones-${assignmentId}.pdf`);
 }
 
 export async function downloadStudentReport(studentId: string, period: number) {

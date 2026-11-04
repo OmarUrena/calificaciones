@@ -19,6 +19,7 @@ import { PermissionsService } from '../common/services/permissions.service';
 import { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import { PrismaService } from '../prisma/prisma.service';
 import { launchReportBrowser } from './report-browser';
+import { SubjectGradeReportQueryDto } from './dto/subject-grade-report-query.dto';
 import { buildSubjectGradeReportHtml, subjectGradeReportFilename } from './subject-grade-report';
 
 type ReportStudent = Prisma.StudentGetPayload<{
@@ -136,11 +137,7 @@ export class ReportsService {
     return pdf;
   }
 
-  async generateSubjectGradeReport(
-    assignmentId: string,
-    period: number | undefined,
-    user: AuthenticatedUser,
-  ) {
+  private async findSubjectReportAssignment(assignmentId: string, user: AuthenticatedUser) {
     if (user.role === UserRole.TEACHER && !user.teacherId) {
       throw new ForbiddenException('Tu usuario no está vinculado a un maestro.');
     }
@@ -156,19 +153,93 @@ export class ReportsService {
     if (!assignment)
       throw new NotFoundException('La asignatura no está disponible para tu usuario.');
     this.permissionsService.ensureCanAccessSchool(user, assignment.schoolId);
-    const academic = assignment.subject.type === SubjectType.ACADEMIC;
-    if (academic && (!Number.isInteger(period) || period! < 1 || period! > 4)) {
-      throw new BadRequestException('Selecciona un período entre P1 y P4.');
-    }
-    if (!academic && period !== undefined) {
-      throw new BadRequestException('Las asignaturas técnicas se generan por RA, sin período.');
-    }
-    const where = {
+    return assignment;
+  }
+
+  private subjectReportScope(assignment: {
+    schoolId: string;
+    schoolYearId: string;
+    courseId: string;
+    subjectId: string;
+  }) {
+    return {
       schoolId: assignment.schoolId,
       schoolYearId: assignment.schoolYearId,
       courseId: assignment.courseId,
       subjectId: assignment.subjectId,
     };
+  }
+
+  private reportOutcomes(where: {
+    schoolId: string;
+    schoolYearId: string;
+    courseId: string;
+    subjectId: string;
+  }) {
+    return this.prisma.technicalLearningOutcome.findMany({
+      where: {
+        schoolId: where.schoolId,
+        subjectId: where.subjectId,
+        OR: [{ isActive: true }, { technicalGrades: { some: where } }],
+      },
+      orderBy: [{ order: 'asc' }, { code: 'asc' }],
+    });
+  }
+
+  async subjectGradeReportOptions(assignmentId: string, user: AuthenticatedUser) {
+    const assignment = await this.findSubjectReportAssignment(assignmentId, user);
+    return {
+      type: assignment.subject.type,
+      periods: assignment.subject.type === SubjectType.ACADEMIC ? [1, 2, 3, 4] : [],
+      outcomes:
+        assignment.subject.type === SubjectType.TECHNICAL
+          ? await this.reportOutcomes(this.subjectReportScope(assignment))
+          : [],
+    };
+  }
+
+  async generateSubjectGradeReport(
+    assignmentId: string,
+    period: number | undefined,
+    user: AuthenticatedUser,
+    selection: SubjectGradeReportQueryDto = {},
+  ) {
+    const assignment = await this.findSubjectReportAssignment(assignmentId, user);
+    const academic = assignment.subject.type === SubjectType.ACADEMIC;
+    const periods = selection.periods ?? (period === undefined ? [] : [period]);
+    if (selection.periods !== undefined && period !== undefined) {
+      throw new BadRequestException('Usa una sola selección de períodos.');
+    }
+    if (
+      academic &&
+      (!periods.length ||
+        periods.length > 4 ||
+        new Set(periods).size !== periods.length ||
+        periods.some((value) => !Number.isInteger(value) || value < 1 || value > 4))
+    ) {
+      throw new BadRequestException('Marca uno o varios períodos entre P1 y P4.');
+    }
+    if (!academic && periods.length) {
+      throw new BadRequestException('Las asignaturas técnicas se generan por RA, sin período.');
+    }
+    if (academic && selection.outcomeIds !== undefined)
+      throw new BadRequestException('Las asignaturas académicas se generan por períodos.');
+    periods.sort((left, right) => left - right);
+    const where = this.subjectReportScope(assignment);
+    const availableOutcomes = academic ? [] : await this.reportOutcomes(where);
+    if (
+      !academic &&
+      selection.outcomeIds !== undefined &&
+      (!selection.outcomeIds.length ||
+        new Set(selection.outcomeIds).size !== selection.outcomeIds.length ||
+        selection.outcomeIds.some((id) => !availableOutcomes.some((outcome) => outcome.id === id)))
+    ) {
+      throw new BadRequestException('Marca RA disponibles para esta asignatura.');
+    }
+    const outcomes =
+      selection.outcomeIds === undefined
+        ? availableOutcomes
+        : availableOutcomes.filter((outcome) => selection.outcomeIds!.includes(outcome.id));
     const students = await this.prisma.student.findMany({
       where: {
         schoolId: where.schoolId,
@@ -194,25 +265,22 @@ export class ReportsService {
       html = buildSubjectGradeReportHtml({
         ...identity,
         type: 'ACADEMIC',
-        period: period!,
+        periods,
         grades,
         blockTitles: [1, 2, 3, 4].map((block) => this.academicBlockTitle(block)),
       });
     } else {
-      const [grades, outcomes] = await Promise.all([
-        this.prisma.technicalGrade.findMany({ where }),
-        this.prisma.technicalLearningOutcome.findMany({
-          where: {
-            schoolId: where.schoolId,
-            subjectId: where.subjectId,
-            OR: [{ isActive: true }, { technicalGrades: { some: where } }],
-          },
-          orderBy: [{ order: 'asc' }, { code: 'asc' }],
-        }),
-      ]);
+      const grades = await this.prisma.technicalGrade.findMany({
+        where: {
+          ...where,
+          ...(selection.outcomeIds === undefined
+            ? {}
+            : { learningOutcomeId: { in: outcomes.map((outcome) => outcome.id) } }),
+        },
+      });
       html = buildSubjectGradeReportHtml({ ...identity, type: 'TECHNICAL', grades, outcomes });
     }
-    const buffer = await this.renderPdf(html);
+    const buffer = await this.renderPdf(html, false);
     await this.auditService.log({
       schoolId: assignment.schoolId,
       userId: user.id,
@@ -223,7 +291,9 @@ export class ReportsService {
         report: 'subject-grade-register',
         courseId: assignment.courseId,
         subjectId: assignment.subjectId,
-        period: academic ? period : null,
+        period: academic && periods.length === 1 ? periods[0] : null,
+        periods: academic ? periods : [],
+        outcomeIds: academic ? [] : outcomes.map((outcome) => outcome.id),
         studentCount: students.length,
       },
     });
@@ -232,7 +302,10 @@ export class ReportsService {
       filename: subjectGradeReportFilename(
         identity.course,
         identity.subject,
-        academic ? period : undefined,
+        academic ? periods : undefined,
+        !academic && selection.outcomeIds !== undefined
+          ? outcomes.map((outcome) => outcome.code)
+          : undefined,
       ),
     };
   }
@@ -682,7 +755,7 @@ export class ReportsService {
     `;
   }
 
-  private async renderPdf(html: string): Promise<Buffer> {
+  private async renderPdf(html: string, landscape = true): Promise<Buffer> {
     const browser = await launchReportBrowser();
 
     try {
@@ -690,7 +763,7 @@ export class ReportsService {
       await page.setContent(html, { waitUntil: 'networkidle' });
       const pdf = await page.pdf({
         format: 'Letter',
-        landscape: true,
+        landscape,
         printBackground: true,
         margin: {
           top: '10mm',
