@@ -62,9 +62,14 @@ export function useDeleteStudent() {
 
   return useMutation({
     mutationFn: (id: string) => apiFetch<Student>(`/students/${id}`, { method: "DELETE" }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: STUDENTS_QUERY_KEY });
-      void queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: STUDENTS_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] }),
+        queryClient.invalidateQueries({ queryKey: ["academic-register"] }),
+        queryClient.invalidateQueries({ queryKey: ["technical-register"] }),
+        queryClient.invalidateQueries({ queryKey: ["grade-view"] }),
+      ]);
     },
   });
 }

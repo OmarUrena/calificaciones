@@ -186,6 +186,14 @@ test('HTTP period updates enforce roles, school boundaries, boolean values and a
     assert.equal(audit[0].oldValue.p1Enabled, false);
     assert.equal(audit[0].newValue.p1Enabled, true);
     assert.equal((await patch('year', { p4Enabled: false }, 'SUPER_ADMIN')).status, 200);
+    // Regression: a deployed validator must accept both boolean values for every P and RP.
+    for (const field of ['p1Enabled', 'rp1Enabled', 'p2Enabled', 'rp2Enabled', 'p3Enabled', 'rp3Enabled', 'p4Enabled', 'rp4Enabled']) {
+      for (const value of [false, true]) {
+        const response = await patch('year', { [field]: value });
+        assert.equal(response.status, 200, `${field}=${value} must be accepted`);
+        assert.equal((await response.json())[field], value);
+      }
+    }
   } finally {
     await app.close();
   }

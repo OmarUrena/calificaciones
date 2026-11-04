@@ -4,6 +4,26 @@ El proyecto de Vercel debe usar `back` como Root Directory. `vercel.json` fija
 el preset NestJS; no necesita una entrada en `functions` para `src/main.ts`.
 Usar Node.js 22 (>=22.17) o 24, compatible con `@sparticuz/chromium`.
 
+## Despliegue de controles P y RP
+
+Usar `npm run build` como Build Command del backend. Este comando regenera el
+cliente de Prisma antes de compilar NestJS, incluso cuando Vercel reutiliza
+dependencias de una compilación anterior.
+
+Publicar tanto `back/` como `front/` desde el mismo commit. En el proyecto del
+frontend, `NEXT_PUBLIC_API_URL` debe apuntar a la URL publicada del backend con
+el sufijo `/api`. Si se cambia esa variable, volver a desplegar el frontend.
+
+Si al cambiar un período aparece `property rp3Enabled should not exist`, la API
+que recibe la petición no reconoce los controles actuales. Revisar la URL de
+API configurada y desplegar el backend desde el commit actualizado. Aplicar solo
+la migración de base de datos no actualiza los validadores del servidor.
+
+Después del despliegue, comprobar con una sesión administrativa que
+`GET /api/school-years` devuelve ocho valores booleanos: `p1Enabled` a
+`p4Enabled` y `rp1Enabled` a `rp4Enabled`. El frontend informa si faltan estos
+estados en lugar de mostrarlos todos como inactivos.
+
 ## Boletines PDF
 
 En Vercel (`VERCEL=1`), el backend usa el Chromium Linux incluido en

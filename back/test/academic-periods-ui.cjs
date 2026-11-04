@@ -36,6 +36,8 @@ const authStorageKey = publicAuthUrl ? `sb-${new URL(publicAuthUrl).hostname.spl
       const patches = [];
       const gradeWrites = [];
       let failNext = false;
+      let legacyApi = false;
+      let legacyValidation = false;
       await context.route('**/*', async (route) => {
         const request = route.request();
         const url = new URL(request.url());
@@ -48,13 +50,16 @@ const authStorageKey = publicAuthUrl ? `sb-${new URL(publicAuthUrl).hostname.spl
         });
         if (url.pathname.endsWith('/school-years/year')) {
           const values = request.postDataJSON();
+          if (legacyValidation) return respond({ message: ['property rp3Enabled should not exist'] }, 400);
           if (failNext) { failNext = false; return respond({ message: 'No se pudo actualizar el período.' }, 503); }
           patches.push(values);
           year = { ...year, ...values };
           periods = Object.fromEntries(fields.map((field) => [`${field}Enabled`, year[`${field}Enabled`]]));
           return respond(year);
         }
-        if (url.pathname.endsWith('/school-years')) return respond([year]);
+        if (url.pathname.endsWith('/school-years')) return respond([legacyApi
+          ? { id: year.id, schoolId: year.schoolId, name: year.name, isActive: year.isActive }
+          : year]);
         if (url.pathname.endsWith('/teacher-assignments')) return respond([{
           id: 'assignment', schoolId: 'school', schoolYearId: 'year', courseId: 'course', subjectId: 'subject', teacherId: 'teacher', isActive: true, course, subject,
         }]);
@@ -91,6 +96,16 @@ const authStorageKey = publicAuthUrl ? `sb-${new URL(publicAuthUrl).hostname.spl
         await rp1Switch.click();
         await page.waitForFunction(() => document.querySelector('[role="switch"][aria-label="RP1 de 2026-2027"]')?.getAttribute('aria-checked') === 'false');
         assert.equal(await p1Switch.getAttribute('aria-checked'), 'true');
+        legacyValidation = true;
+        await page.getByRole('switch', { name: 'RP3 de 2026-2027', exact: true }).click();
+        await page.getByRole('alert').filter({ hasText: 'El servicio de calificaciones necesita actualizarse' }).waitFor();
+        assert.equal(await page.getByRole('switch', { name: 'RP3 de 2026-2027', exact: true }).getAttribute('aria-checked'), 'true');
+        legacyValidation = false;
+        legacyApi = true;
+        await page.reload();
+        await page.getByRole('alert').filter({ hasText: 'El servicio de calificaciones necesita actualizarse' }).waitFor();
+        assert.equal(await page.getByRole('switch').count(), 0, 'missing states must not appear as inactive');
+        legacyApi = false;
       } else {
         await page.getByText('Solo usuarios administrativos pueden gestionar años escolares.').waitFor();
         assert.equal(await page.getByRole('switch').count(), 0);

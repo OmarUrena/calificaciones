@@ -73,19 +73,21 @@ function StudentsPageContent() {
 
   const handleDelete = useCallback(
     async (student: Student) => {
+      if (!canManageStudents || deleteStudent.isPending) return;
       const confirmed = window.confirm(
-        `¿Deseas eliminar a ${student.firstName} ${student.lastName}?`,
+        `Se eliminará definitivamente a ${student.firstName} ${student.lastName} (No. ${student.listNumber}).\n\nTambién se borrarán todas sus calificaciones y resultados académicos y técnicos.\n\nEsta acción no se puede deshacer. ¿Deseas continuar?`,
       );
       if (!confirmed) return;
 
       try {
         await deleteStudent.mutateAsync(student.id);
-        toast.success("Estudiante eliminado.");
+        if (editingStudent?.id === student.id) closeForm();
+        toast.success("Estudiante y calificaciones eliminados definitivamente.");
       } catch (error) {
         showError(error);
       }
     },
-    [deleteStudent],
+    [canManageStudents, closeForm, deleteStudent, editingStudent?.id],
   );
 
   const columns = useMemo<ColumnDef<Student>[]>(
@@ -124,15 +126,22 @@ function StudentsPageContent() {
                 <Pencil aria-hidden="true" />
                 Editar
               </Button>
-              <Button size="sm" variant="outline" onClick={() => handleDelete(student)}>
-                Eliminar
+              <Button
+                disabled={deleteStudent.isPending}
+                size="sm"
+                variant="destructive"
+                onClick={() => handleDelete(student)}
+              >
+                {deleteStudent.isPending && deleteStudent.variables === student.id
+                  ? "Eliminando..."
+                  : "Eliminar definitivamente"}
               </Button>
             </div>
           ) : null;
         },
       },
     ],
-    [canManageStudents, handleDelete, openEditForm],
+    [canManageStudents, deleteStudent.isPending, deleteStudent.variables, handleDelete, openEditForm],
   );
 
   // eslint-disable-next-line react-hooks/incompatible-library

@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
@@ -104,17 +109,35 @@ export class StudentsService {
   }
 
   async remove(id: string, user: AuthenticatedUser) {
-    const oldValue = await this.findOne(id, user);
-    const student = await this.prisma.student.delete({ where: { id } });
-    await this.auditService.logDelete({
-      schoolId: student.schoolId,
-      userId: user.id,
-      entity: 'Student',
-      entityId: student.id,
-      oldValue,
-    });
+    if (user.role !== UserRole.ADMIN && user.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException('Solo administración puede eliminar estudiantes.');
+    }
 
-    return student;
+    const oldValue = await this.findOne(id, user);
+
+    return this.prisma.$transaction(async (tx) => {
+      const where = { schoolId: oldValue.schoolId, studentId: oldValue.id };
+      await tx.academicGrade.deleteMany({ where });
+      await tx.academicSubjectResult.deleteMany({ where });
+      await tx.technicalGrade.deleteMany({ where });
+      await tx.technicalSubjectResult.deleteMany({ where });
+
+      const student = await tx.student.delete({
+        where: { id: oldValue.id, schoolId: oldValue.schoolId },
+      });
+      await this.auditService.logDelete(
+        {
+          schoolId: student.schoolId,
+          userId: user.id,
+          entity: 'Student',
+          entityId: student.id,
+          oldValue,
+        },
+        tx,
+      );
+
+      return student;
+    });
   }
 
   private async validateCourseAndSchoolYear(
