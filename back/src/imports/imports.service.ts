@@ -22,6 +22,7 @@ import { ImportGradesDto } from './dto/import-grades.dto';
 import { ImportStudentsDto } from './dto/import-students.dto';
 import { UploadedExcelFile } from './types/uploaded-excel-file.type';
 import { ImportTemplateDto } from './dto/import-template.dto';
+import { buildTemplateFilename } from './template-filename';
 import { formatAcademicTemplate } from './academic-template';
 import { formatTechnicalTemplate, MAX_TECHNICAL_TEMPLATE_OUTCOMES } from './technical-template';
 
@@ -637,6 +638,13 @@ export class ImportsService {
   }
 
   async generateTemplate(dto: ImportTemplateDto, user: AuthenticatedUser): Promise<Buffer> {
+    return (await this.generateTemplateDownload(dto, user)).buffer;
+  }
+
+  async generateTemplateDownload(
+    dto: ImportTemplateDto,
+    user: AuthenticatedUser,
+  ): Promise<{ buffer: Buffer; filename: string }> {
     if (dto.type === 'students' && user.role === UserRole.TEACHER) {
       throw new ForbiddenException('Solo administración puede importar estudiantes.');
     }
@@ -737,12 +745,17 @@ export class ImportsService {
       ],
       ['Las celdas de notas vacías conservan los valores existentes.'],
       ['Las notas se validan con las mismas reglas del registro de calificaciones.'],
-      ['Las calificaciones deben ser números enteros. Por ejemplo: 90 o 90.0 son válidos; 90.5 no se admite.'],
+      [
+        'Las calificaciones deben ser números enteros. Por ejemplo: 90 o 90.0 son válidos; 90.5 no se admite.',
+      ],
       [
         'Académicas: incluye al menos una nota de bloque por fila, también al cargar evaluaciones finales.',
       ],
     ]);
-    return Buffer.from(await workbook.xlsx.writeBuffer());
+    return {
+      buffer: Buffer.from(await workbook.xlsx.writeBuffer()),
+      filename: buildTemplateFilename(dto.type, context.courseName ?? dto.courseId, subjectName),
+    };
   }
 
   private async createJob(params: {

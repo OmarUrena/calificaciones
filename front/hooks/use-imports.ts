@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { downloadBlob, uploadFile } from "@/lib/api";
+import { downloadFile, uploadFile } from "@/lib/api";
 import type { ImportSelection, ImportSummary } from "@/types/imports";
 
 const ENDPOINTS = {
@@ -29,11 +29,11 @@ export async function downloadImportTemplate(selection: ImportSelection) {
   Object.entries(selection).forEach(([key, value]) => {
     if (value) query.set(key, value);
   });
-  const blob = await downloadBlob(`/imports/template?${query}`);
+  const { blob, filename } = await downloadFile(`/imports/template?${query}`);
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `plantilla-${selection.type}.xlsx`;
+  anchor.download = filename ?? `plantilla-${selection.type}.xlsx`;
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();

@@ -28,10 +28,10 @@ export class ImportsController {
   @Get('template')
   @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.TEACHER)
   async template(@Query() dto: ImportTemplateDto, @CurrentUser() user: AuthenticatedUser) {
-    const buffer = await this.importsService.generateTemplate(dto, user);
+    const { buffer, filename } = await this.importsService.generateTemplateDownload(dto, user);
     return new StreamableFile(buffer, {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      disposition: `attachment; filename="plantilla-${dto.type}.xlsx"`,
+      disposition: `attachment; filename="${filename}"`,
     });
   }
 

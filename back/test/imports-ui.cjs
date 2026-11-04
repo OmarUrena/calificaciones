@@ -3,8 +3,14 @@
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
 const { Workbook } = require('exceljs');
+const { readFileSync, existsSync } = require('node:fs');
+const { resolve } = require('node:path');
 
 const origin = 'http://localhost:3100';
+const envPath = resolve(__dirname, '../../front/.env');
+const env = existsSync(envPath) ? readFileSync(envPath, 'utf8') : '';
+const authUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? env.match(/^NEXT_PUBLIC_SUPABASE_URL\s*=\s*(.+)$/m)?.[1].trim().replace(/^['"]|['"]$/g, '');
+const storageKey = authUrl ? `sb-${new URL(authUrl).hostname.split('.')[0]}-auth-token` : null;
 const year = { id: 'year', name: '2026-2027' };
 const course = { id: 'course', name: '4to A', schoolId: 'school', schoolYearId: year.id, schoolYear: year };
 const assignments = [
@@ -22,7 +28,11 @@ const assignments = [
     for (const role of ['ADMIN', 'TEACHER']) {
       const context = await browser.newContext({ viewport: { width: role === 'ADMIN' ? 1280 : 390, height: 844 }, acceptDownloads: true });
       await context.addCookies([{ name: 'califapp_token', value: 'test-only', url: origin }]);
-      await context.addInitScript(() => localStorage.setItem('califapp_token', 'test-only'));
+      await context.addInitScript((key) => {
+        localStorage.setItem('califapp_token', 'test-only');
+        if (key) localStorage.setItem(key, JSON.stringify({ access_token: 'test-only', refresh_token: 'test-refresh', token_type: 'bearer',
+          expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: 'user', email: 'test@example.test' } }));
+      }, storageKey);
       const user = { id: 'user', fullName: 'Usuario de prueba', role, teacherId: 'teacher', schoolId: 'school', school: { id: 'school', name: 'Escuela de prueba' }, activeSchoolYear: year };
       const requests = [];
       await context.route('**/*', async (route) => {
@@ -35,7 +45,15 @@ const assignments = [
         if (path.endsWith('/courses')) return route.fulfill({ json: [course], headers });
         if (path.endsWith('/imports/template')) {
           assert.equal(url.searchParams.get('courseId'), course.id);
-          return route.fulfill({ body: buffer, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', headers });
+          const filenames = {
+            students: 'plantilla-estudiantes-4to-A.xlsx',
+            academic: 'plantilla-academica-4to-A-Matematica.xlsx',
+            technical: 'plantilla-tecnica-4to-A-Desarrollo-web.xlsx',
+          };
+          return route.fulfill({ body: buffer, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', headers: {
+            ...headers, 'Content-Disposition': `attachment; filename="${filenames[url.searchParams.get('type')]}"`,
+            'Access-Control-Expose-Headers': 'Content-Disposition',
+          } });
         }
         if (/\/imports\/(students|academic-grades|technical-grades)$/.test(path)) {
           requests.push({ path, body: route.request().postDataBuffer().toString() });
@@ -57,7 +75,7 @@ const assignments = [
       }
       const downloadPromise = page.waitForEvent('download');
       await page.getByRole('button', { name: 'Descargar plantilla' }).click();
-      assert.equal((await downloadPromise).suggestedFilename(), 'plantilla-academic.xlsx');
+      assert.equal((await downloadPromise).suggestedFilename(), 'plantilla-academica-4to-A-Matematica.xlsx');
       await page.getByLabel('Archivo Excel', { exact: true }).setInputFiles({ name: 'datos.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer });
       await page.getByRole('button', { name: 'Importar', exact: true }).click();
       await page.getByRole('heading', { name: 'Importación completada con errores' }).waitFor();
@@ -69,6 +87,9 @@ const assignments = [
       await page.getByRole('button', { name: 'Calificaciones técnicas', exact: true }).click();
       await page.getByRole('combobox', { name: /^Curso/ }).selectOption('course');
       await page.getByRole('combobox', { name: /^Módulo técnico/ }).selectOption('technical');
+      const technicalDownload = page.waitForEvent('download');
+      await page.getByRole('button', { name: 'Descargar plantilla' }).click();
+      assert.equal((await technicalDownload).suggestedFilename(), 'plantilla-tecnica-4to-A-Desarrollo-web.xlsx');
       assert.equal(await page.getByRole('heading', { name: 'Importación completada con errores' }).count(), 0);
       await page.getByLabel('Archivo Excel', { exact: true }).setInputFiles({ name: 'notas.txt', mimeType: 'text/plain', buffer: Buffer.from('invalid') });
       await page.getByRole('alert').filter({ hasText: 'Selecciona un archivo Excel' }).waitFor();
@@ -80,6 +101,9 @@ const assignments = [
       if (role === 'ADMIN') {
         await page.getByRole('button', { name: 'Estudiantes', exact: true }).click();
         await page.getByRole('combobox', { name: /^Curso/ }).selectOption('course');
+        const studentDownload = page.waitForEvent('download');
+        await page.getByRole('button', { name: 'Descargar plantilla' }).click();
+        assert.equal((await studentDownload).suggestedFilename(), 'plantilla-estudiantes-4to-A.xlsx');
         await page.getByLabel('Archivo Excel', { exact: true }).setInputFiles({ name: 'datos.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer });
         await page.getByRole('button', { name: 'Importar', exact: true }).click();
         await page.getByRole('heading', { name: 'Importación completada con errores' }).waitFor();

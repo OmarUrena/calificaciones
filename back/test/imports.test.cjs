@@ -37,6 +37,50 @@ async function excel(rows) {
   return { originalname: 'datos.xlsx', buffer: Buffer.from(await workbook.xlsx.writeBuffer()) };
 }
 
+test('template filenames use the selected course and subject or module, while student templates use the course', async () => {
+  const { service, prisma } = fixture();
+  prisma.course.findFirst = async () => ({ id: 'course', name: '5to A', schoolId: 'school', schoolYearId: 'year' });
+  prisma.teacherAssignment.findFirst = async () => ({ subject: { id: 'subject', name: 'Matemáticas' } });
+  const academic = await service.generateTemplateDownload({ ...selection, type: 'academic' }, user);
+  assert.equal(academic.filename, 'plantilla-academica-5to-A-Matematicas.xlsx');
+  const sheet = new Workbook();
+  await sheet.xlsx.load(academic.buffer);
+  assert.equal(sheet.worksheets[0].getCell('B1').value, '5to A');
+  assert.equal(sheet.worksheets[0].getCell('B2').value, 'Matemáticas');
+  prisma.teacherAssignment.findFirst = async () => ({ subject: { id: 'subject', name: 'Desarrollo web' } });
+  assert.equal((await service.generateTemplateDownload({ ...selection, type: 'technical' }, user)).filename,
+    'plantilla-tecnica-5to-A-Desarrollo-web.xlsx');
+  assert.equal((await service.generateTemplateDownload({ ...selection, type: 'students' }, user)).filename,
+    'plantilla-estudiantes-5to-A.xlsx');
+});
+
+test('every grade cell in downloaded academic and technical workbooks has whole-number stop validation', async () => {
+  const { service, prisma } = fixture();
+  prisma.technicalLearningOutcome.findMany = async () => [
+    { id: 'ra-a', code: 'RA1', order: 1, weight: 25 },
+    { id: 'ra-b', code: 'RA3', order: 2, weight: 75 },
+  ];
+  for (const type of ['academic', 'technical']) {
+    const { buffer } = await service.generateTemplateDownload({ ...selection, type }, user);
+    const workbook = new Workbook();
+    await workbook.xlsx.load(buffer);
+    const sheet = workbook.worksheets[0];
+    for (const rowNumber of [5, 6]) {
+      for (let column = 2; column <= sheet.columnCount; column++) {
+        const cell = sheet.getRow(rowNumber).getCell(column);
+        const validation = cell.dataValidation;
+        assert.equal(cell.numFmt, '0', cell.address);
+        assert.equal(validation.type, 'whole', cell.address);
+        assert.equal(validation.operator, 'between', cell.address);
+        assert.deepEqual(validation.formulae, [0, type === 'academic' ? 100 : column <= 5 ? 25 : 75], cell.address);
+        assert.equal(validation.allowBlank, true, cell.address);
+        assert.equal(validation.showErrorMessage, true, cell.address);
+        assert.equal(validation.errorStyle, 'stop', cell.address);
+      }
+    }
+  }
+});
+
 test('academic template groups four blocks, colors ordinary/recovery columns and imports without repeating the subject', async () => {
   const { service, writes } = fixture();
   const buffer = await service.generateTemplate({ ...selection, type: 'academic' }, user);

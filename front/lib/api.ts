@@ -51,6 +51,15 @@ export async function downloadBlob(path: string, options: ApiRequestOptions = {}
   return response.blob();
 }
 
+export async function downloadFile(path: string, options: ApiRequestOptions = {}) {
+  const response = await authenticatedFetch(path, options);
+  if (!response.ok) throw await buildApiError(response);
+
+  const disposition = response.headers.get("Content-Disposition");
+  const filename = disposition?.match(/filename\s*=\s*"([^"]+)"/i)?.[1] ?? null;
+  return { blob: await response.blob(), filename };
+}
+
 export async function uploadFile<T>(path: string, options: UploadFileOptions): Promise<T> {
   const formData = new FormData();
   formData.append(options.fieldName ?? "file", options.file);

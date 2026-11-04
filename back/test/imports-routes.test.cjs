@@ -17,7 +17,10 @@ test('HTTP template route returns an Excel file instead of looking up an import 
   const module = await Test.createTestingModule({
     controllers: [ImportsController],
     providers: [{ provide: ImportsService, useValue: {
-      generateTemplate: async (dto, user) => { generated.push({ dto, user }); return buffer; },
+      generateTemplateDownload: async (dto, user) => {
+        generated.push({ dto, user });
+        return { buffer, filename: 'plantilla-tecnica-6to-A-Desarrollo-web.xlsx' };
+      },
       findOne: async (id) => { lookedUp.push(id); return { id }; },
     } }],
   }).compile();
@@ -38,7 +41,7 @@ test('HTTP template route returns an Excel file instead of looking up an import 
     const response = await fetch(`${origin}/api/imports/template?${query}`);
     assert.equal(response.status, 200);
     assert.match(response.headers.get('content-type'), /spreadsheetml.sheet/);
-    assert.match(response.headers.get('content-disposition'), /plantilla-technical.xlsx/);
+    assert.equal(response.headers.get('content-disposition'), 'attachment; filename="plantilla-tecnica-6to-A-Desarrollo-web.xlsx"');
     const downloaded = new Workbook();
     await downloaded.xlsx.load(Buffer.from(await response.arrayBuffer()));
     assert.equal(downloaded.worksheets[0].getCell('B1').value, '6to A');

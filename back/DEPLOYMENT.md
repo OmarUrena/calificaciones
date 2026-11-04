@@ -26,6 +26,10 @@ estados en lugar de mostrarlos todos como inactivos.
 
 ## Calificaciones ingresadas enteras
 
+Las descargas de importación usan nombres con el curso y la asignatura o módulo.
+El servidor devuelve el nombre en `Content-Disposition` y CORS lo expone al
+frontend. Desplegar ambos proyectos para que el navegador use estos nombres.
+
 Las notas ingresadas (P/RP, ordinaria, recuperaciones y especial) deben ser
 enteros. Un valor numérico `90.0` equivale a `90` y se acepta; `90.5` se rechaza.
 Los promedios PC, sumatorias y pesos de RA conservan su precisión y reglas.
