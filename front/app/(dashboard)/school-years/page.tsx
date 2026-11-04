@@ -11,6 +11,7 @@ import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { SchoolYearForm } from "@/components/forms/SchoolYearForm";
+import { AcademicPeriodControls } from "@/components/grades/AcademicPeriodControls";
 import { Button } from "@/components/ui/button";
 import {
   useActivateSchoolYear,
@@ -92,6 +93,13 @@ export default function SchoolYearsPage() {
         ),
       },
       {
+        id: "periods",
+        header: "Edición de períodos",
+        cell: ({ row }) => canManageSchoolYears
+          ? <AcademicPeriodControls schoolYear={row.original} />
+          : null,
+      },
+      {
         id: "actions",
         header: "Acciones",
         cell: ({ row }) => {
@@ -117,7 +125,7 @@ export default function SchoolYearsPage() {
         },
       },
     ],
-    [activateSchoolYear.isPending, handleActivate, openEditForm],
+    [activateSchoolYear.isPending, canManageSchoolYears, handleActivate, openEditForm],
   );
 
   // eslint-disable-next-line react-hooks/incompatible-library
@@ -184,6 +192,13 @@ export default function SchoolYearsPage() {
       ) : null}
 
       <div className="admin-card overflow-hidden p-0">
+        {canManageSchoolYears ? (
+          <p className="border-b border-border p-4 text-sm text-institutional-gray">
+            Activa o desactiva P1 a P4 y RP1 a RP4 de forma independiente para permitir o bloquear
+            su edición en todos los bloques académicos del año escolar.
+            Las notas guardadas se conservan.
+          </p>
+        ) : null}
         {isLoading ? (
           <div className="flex items-center gap-2 p-6 text-base text-institutional-gray">
             <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />

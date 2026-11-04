@@ -7,6 +7,11 @@ import {
   type AcademicScoreValues,
   type ApiNumericValue,
 } from "@/types/grades";
+import type { AcademicPeriods } from "@/types/school-year";
+
+export function isAcademicPeriodEnabled(periods: AcademicPeriods, field: AcademicScoreField) {
+  return periods[`${field}Enabled`] === true;
+}
 
 export const EMPTY_ACADEMIC_SCORES: AcademicScoreValues = {
   p1: null,

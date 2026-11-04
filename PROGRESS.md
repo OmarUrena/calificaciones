@@ -1,5 +1,13 @@
 # PROGRESS.md
 
+# Avance del 2026-11-04
+
+- Administración puede activar o desactivar P1 a P4 y RP1 a RP4 de forma independiente desde `/school-years`, por escuela y año escolar. El estado se aplica a todos los bloques académicos y conserva las notas existentes para consulta.
+- El backend rechaza cambios y borrados de campos desactivados en altas, actualizaciones, guardados por lote e importaciones de Excel. Permite enviar valores sin cambios de campos bloqueados al guardar otros campos activos y mantiene las reglas de recuperación existentes.
+- La interfaz muestra los campos bloqueados, actualiza sus estados periódicamente y protege una recuperación bloqueada frente a cambios de P que la borrarían o invalidarían.
+- Aplicada y verificada en Supabase la migración `20261104120000_academic_period_editing`. Los ocho controles usan `true` por defecto para conservar el comportamiento previo. La migración se ejecutó mediante el pool de sesiones; no se cambiaron credenciales ni calificaciones.
+- Verificación: build del backend, TypeScript del frontend y esquema Prisma válidos; 45 pruebas de períodos, importaciones y visualización aprobadas. Pruebas en navegador para ADMIN y TEACHER verifican los ocho controles, errores de guardado, bloqueo independiente y conservación de notas con API simulada.
+
 # Avance del 2026-10-24
 
 - Corregida la edición de asignaciones docentes para aceptar y validar `schoolYearId`, evitando el error `property schoolYearId should not exist`.

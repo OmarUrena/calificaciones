@@ -1,4 +1,5 @@
 import type { Course } from "@/types/course";
+import type { AcademicPeriods } from "@/types/school-year";
 import type { Student } from "@/types/student";
 import type { Subject } from "@/types/subject";
 import type { TechnicalLearningOutcome } from "@/types/technical-learning-outcome";
@@ -70,6 +71,7 @@ export type AcademicSubjectResult = {
 };
 
 export type AcademicRegister = {
+  periods: AcademicPeriods;
   course: Course;
   subject: Subject;
   students: Student[];

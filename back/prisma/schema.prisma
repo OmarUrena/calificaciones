@@ -45,6 +45,14 @@ model SchoolYear {
   schoolId                String
   name                    String
   isActive                Boolean                  @default(false)
+  p1Enabled               Boolean                  @default(true)
+  rp1Enabled              Boolean                  @default(true)
+  p2Enabled               Boolean                  @default(true)
+  rp2Enabled              Boolean                  @default(true)
+  p3Enabled               Boolean                  @default(true)
+  rp3Enabled              Boolean                  @default(true)
+  p4Enabled               Boolean                  @default(true)
+  rp4Enabled              Boolean                  @default(true)
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
   createdBy               String?

@@ -23,6 +23,7 @@ export function useAcademicRegister(courseId: string, subjectId: string) {
         `/academic-grades/course/${courseId}/subject/${subjectId}/register`,
       ),
     enabled: Boolean(courseId && subjectId),
+    refetchInterval: 30_000,
   });
 }
 

@@ -2,6 +2,7 @@ import { AlertTriangle } from "lucide-react";
 
 import {
   calculateAcademicPc,
+  isAcademicPeriodEnabled,
   ORDINARY_BY_RECOVERY,
   parseGradeInput,
   validateAcademicScores,
@@ -13,6 +14,7 @@ import type {
   AcademicScoreValues,
 } from "@/types/grades";
 import type { Student } from "@/types/student";
+import type { AcademicPeriods } from "@/types/school-year";
 
 const SCORE_COLUMNS: Array<{ field: AcademicScoreField; label: string }> = [
   { field: "p1", label: "P1" },
@@ -29,11 +31,13 @@ export function AcademicGradeTable({
   students,
   scoresByStudent,
   dirtyStudentIds,
+  periods,
   onScoreChange,
 }: {
   students: Student[];
   scoresByStudent: Record<string, AcademicScoreValues>;
   dirtyStudentIds: Set<string>;
+  periods: AcademicPeriods;
   onScoreChange: (studentId: string, field: AcademicScoreField, value: number | null) => void;
 }) {
   const invalidRows = students.filter(
@@ -64,6 +68,9 @@ export function AcademicGradeTable({
               {SCORE_COLUMNS.map((column) => (
                 <th className="w-24 min-w-24 text-center" key={column.field}>
                   {column.label}
+                  {!isAcademicPeriodEnabled(periods, column.field) ? (
+                    <span className="block text-xs font-normal text-institutional-gray">Bloqueado</span>
+                  ) : null}
                 </th>
               ))}
               <th className="w-24 min-w-24 text-center">PC</th>
@@ -87,7 +94,8 @@ export function AcademicGradeTable({
                     ) : null}
                   </td>
                   {SCORE_COLUMNS.map(({ field, label }) => {
-                    const disabled = isRecoveryDisabled(field, scores);
+                    const periodClosed = !isAcademicPeriodEnabled(periods, field);
+                    const disabled = periodClosed || isRecoveryDisabled(field, scores);
                     const error = errors[field];
 
                     return (
@@ -105,9 +113,11 @@ export function AcademicGradeTable({
                           onChange={(event) =>
                             onScoreChange(student.id, field, parseGradeInput(event.target.value))
                           }
-                          placeholder={disabled ? "N/A" : "—"}
+                          placeholder={!periodClosed && disabled ? "N/A" : "—"}
                           step="0.01"
-                          title={error ?? (disabled ? "La recuperación no aplica." : undefined)}
+                          title={periodClosed
+                            ? "Período desactivado por administración. No se puede modificar."
+                            : error ?? (disabled ? "La recuperación no aplica." : undefined)}
                           type="number"
                           value={scores[field] ?? ""}
                         />

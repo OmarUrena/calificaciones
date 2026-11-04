@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import {
   hasAcademicScores,
+  isAcademicPeriodEnabled,
   normalizeAcademicScores,
   RECOVERY_BY_ORDINARY,
   toNullableNumber,
@@ -25,6 +26,7 @@ import type {
   AcademicScoreValues,
   AcademicSubjectResult,
 } from "@/types/grades";
+import { ACADEMIC_PERIODS } from "@/types/school-year";
 
 import { AcademicBlockTabs, type AcademicTab } from "./AcademicBlockTabs";
 import { AcademicGradeTable } from "./AcademicGradeTable";
@@ -93,9 +95,20 @@ export function AcademicGradeEditor({ register }: { register: AcademicRegister }
     field: AcademicScoreField,
     value: number | null,
   ) {
-    if (activeTab === "summary") return;
+    if (activeTab === "summary" || !isAcademicPeriodEnabled(register.periods, field)) return;
 
     const draftKey = getAcademicDraftKey(activeTab, studentId);
+    if (isOrdinaryField(field)) {
+      const recoveryField = RECOVERY_BY_ORDINARY[field];
+      const recovery = academicDrafts[draftKey][recoveryField];
+      if (!isAcademicPeriodEnabled(register.periods, recoveryField) && recovery !== null &&
+        (value === null || value >= 70 || value > recovery)) {
+        toast.error(
+          `${recoveryField.toUpperCase()} está desactivado. Administración debe activar su edición antes de cambiar ${field.toUpperCase()} de esta forma.`,
+        );
+        return;
+      }
+    }
     edits.current.set(draftKey, (edits.current.get(draftKey) ?? 0) + 1);
     setAcademicDrafts((current) => {
       const scores = { ...current[draftKey], [field]: value };
@@ -249,7 +262,8 @@ export function AcademicGradeEditor({ register }: { register: AcademicRegister }
         </div>
         <button
           className="btn-primary-institutional inline-flex items-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={isSaving || dirtyCount === 0}
+          disabled={isSaving || dirtyCount === 0 || (activeTab !== "summary" &&
+            !Object.values(register.periods).some(Boolean))}
           onClick={() => void handleSave()}
           type="button"
         >
@@ -259,6 +273,14 @@ export function AcademicGradeEditor({ register }: { register: AcademicRegister }
       </div>
 
       <AcademicBlockTabs activeTab={activeTab} onChange={setActiveTab} />
+
+      {activeTab !== "summary" && ACADEMIC_PERIODS.some(({ key }) => !register.periods[key]) ? (
+        <p className="border-b border-border bg-muted px-4 py-3 text-sm text-institutional-gray" role="status">
+          Campos bloqueados: {ACADEMIC_PERIODS.filter(({ key }) => !register.periods[key])
+            .map(({ label }) => label).join(", ")}. Administración controla cada P y RP de forma
+          independiente. Las notas guardadas siguen disponibles para consulta.
+        </p>
+      ) : null}
 
       <div role="tabpanel">
         {activeTab === "summary" ? (
@@ -271,6 +293,7 @@ export function AcademicGradeEditor({ register }: { register: AcademicRegister }
           />
         ) : (
           <AcademicGradeTable
+            periods={register.periods}
             dirtyStudentIds={activeDirtyStudentIds}
             onScoreChange={handleScoreChange}
             scoresByStudent={activeScoresByStudent}

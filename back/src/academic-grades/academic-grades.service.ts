@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, SubjectStatus, SubjectType, UserRole } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
@@ -66,7 +71,7 @@ export class AcademicGradesService {
       user,
     );
 
-    const [subject, students, grades, results] = await Promise.all([
+    const [subject, students, grades, results, periods] = await Promise.all([
       this.prisma.subject.findUnique({ where: { id: subjectId } }),
       this.prisma.student.findMany({
         where: {
@@ -94,9 +99,10 @@ export class AcademicGradesService {
         },
         orderBy: { student: { listNumber: 'asc' } },
       }),
+      this.getPeriods(course.schoolId, course.schoolYearId),
     ]);
 
-    return { course, subject, students, grades, results };
+    return { course, subject, students, grades, results, periods };
   }
 
   async findByCourseAndSubject(courseId: string, subjectId: string, user: AuthenticatedUser) {
@@ -133,6 +139,7 @@ export class AcademicGradesService {
 
   async create(dto: CreateAcademicGradeDto, user: AuthenticatedUser) {
     const context = await this.validateCreateContext(dto, user);
+    await this.ensurePeriodsEditable(context, dto);
     const pc = this.calculatePc(dto);
 
     try {
@@ -176,6 +183,7 @@ export class AcademicGradesService {
 
     await this.validateAcademicSubjectForCourse(context, user);
 
+    await this.ensurePeriodsEditable(context, dto, current);
     const mergedScores = this.mergeScores(current, dto);
     const pc = this.calculatePc(mergedScores);
 
@@ -544,6 +552,49 @@ export class AcademicGradesService {
     }
 
     return { ccf, cexf, cef, status };
+  }
+
+  private async getPeriods(schoolId: string, schoolYearId: string) {
+    const periods = await this.prisma.schoolYear.findFirst({
+      where: { id: schoolYearId, schoolId },
+      select: {
+        p1Enabled: true,
+        rp1Enabled: true,
+        p2Enabled: true,
+        rp2Enabled: true,
+        p3Enabled: true,
+        rp3Enabled: true,
+        p4Enabled: true,
+        rp4Enabled: true,
+      },
+    });
+
+    if (!periods) {
+      throw new NotFoundException('No se encontró el año escolar de la escuela.');
+    }
+
+    return periods;
+  }
+
+  private async ensurePeriodsEditable(
+    context: Pick<AcademicContext, 'schoolId' | 'schoolYearId'>,
+    scores: AcademicScoreFields,
+    current: PersistedAcademicScoreFields = {},
+  ): Promise<void> {
+    const periods = await this.getPeriods(context.schoolId, context.schoolYearId);
+
+    for (const period of [1, 2, 3, 4] as const) {
+      for (const field of [`p${period}`, `rp${period}`] as const) {
+        if (periods[`${field}Enabled`]) continue;
+
+        // Full-row clients may send unchanged values for closed periods.
+        if (scores[field] !== undefined && scores[field] !== this.toNumber(current[field])) {
+          throw new ForbiddenException(
+            `${field.toUpperCase()} está desactivado. Administración debe activarlo para permitir cambios.`,
+          );
+        }
+      }
+    }
   }
 
   private calculatePc(scores: AcademicScoreFields): number | null {

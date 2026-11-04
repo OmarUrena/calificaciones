@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
-import type { SchoolYear, SchoolYearFormValues } from "@/types/school-year";
+import type { AcademicPeriods, SchoolYear, SchoolYearFormValues } from "@/types/school-year";
 
 const SCHOOL_YEARS_QUERY_KEY = ["school-years"];
 
@@ -34,14 +34,17 @@ export function useUpdateSchoolYear() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, values }: { id: string; values: Partial<SchoolYearFormValues> }) =>
+    mutationFn: ({ id, values }: { id: string; values: Partial<SchoolYearFormValues & AcademicPeriods> }) =>
       apiFetch<SchoolYear>(`/school-years/${id}`, {
         method: "PATCH",
         body: JSON.stringify(values),
       }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: SCHOOL_YEARS_QUERY_KEY });
-      void queryClient.invalidateQueries({ queryKey: ["current-user"] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: SCHOOL_YEARS_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: ["current-user"] }),
+        queryClient.invalidateQueries({ queryKey: ["academic-register"] }),
+      ]);
     },
   });
 }
