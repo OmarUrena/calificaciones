@@ -1,5 +1,12 @@
 # PROGRESS.md
 
+# Avance del 2026-11-05: aviso inmediato de sesión
+
+- Reproducido el aviso inmediato del componente anterior con un token recién emitido de cinco minutos: el margen fijo de aviso era también de cinco minutos. El componente confundía el vencimiento del token con la necesidad de intervención del usuario y trataba una sesión nula o sin fecha de vencimiento como vencida.
+- `SessionExpiryNotice` mantiene la página operativa mientras el token es válido. Al vencer o perderse la sesión, consulta `getSession` fuera del callback de Auth para permitir su recuperación automática y solo abre el diálogo si esa recuperación falla. Las respuestas antiguas no sobrescriben una renovación posterior; no se consulta periódicamente mientras el token siga vigente.
+- Verificación: regresión confirmada contra el componente de `HEAD`, build de producción y TypeScript frontend correctos; pasan `check-session.mjs` y las pruebas ampliadas de `check-session-notice.mjs`. Cubren tokens de 1, 5 y 60 minutos, recuperación silenciosa, fallos de red o rechazo, recuperación manual, sesiones nulas iniciales, respuestas antiguas, cambios de pestaña, suspensión y limpieza del componente.
+- Las pruebas simulan Auth y el reloj; no se verificó la duración del token del usuario afectado ni se modificó Supabase. Se conservan importaciones y períodos. Pendiente desplegar el frontend.
+
 # Avance del 2026-11-05: restauración de sesiones
 
 - Revertidos únicamente los cambios de sesiones de `5f57af7`, usando `55dc194` como referencia exacta para el servicio de autenticación, los providers, el layout, el hook y las funciones de login/logout. Se retiran `SessionAccountGuard` y las pruebas añadidas exclusivamente para el comportamiento revertido.

@@ -5,7 +5,6 @@ import { toast } from "sonner";
 
 import { refreshAccessToken, supabase } from "@/lib/session";
 
-const WARNING_SECONDS = 5 * 60;
 type Notice = { token: string; expired: boolean };
 
 // The native modal keeps keyboard focus inside and makes the page behind it inert.
@@ -23,39 +22,72 @@ export function SessionExpiryNotice() {
 
   useEffect(() => {
     if (!supabase) return;
+    const auth = supabase.auth;
     let disposed = false;
     let receivedEvent = false;
     let initialized = false;
+    let checking = false;
+    let revision = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let current: { access_token: string; expires_at?: number } | null = null;
 
     function updateNotice() {
       if (disposed || !initialized) return;
       clearTimeout(timer);
-      const remaining = (current?.expires_at ?? 0) - Date.now() / 1000;
-      setNotice(remaining <= WARNING_SECONDS
-        ? { token: current?.access_token ?? "", expired: remaining <= 0 }
-        : null);
-      // Schedule locally. No database requests are needed while entering grades.
-      if (remaining > 0) {
-        const delay = remaining > WARNING_SECONDS ? remaining - WARNING_SECONDS : remaining;
-        timer = setTimeout(updateNotice, Math.min(delay * 1000 + 50, 2_147_483_647));
+      const remaining = current?.expires_at === undefined
+        ? null
+        : current.expires_at - Date.now() / 1000;
+      if (current && (remaining === null || remaining > 0)) {
+        setNotice(null);
+        // Token expiry is not session expiry: let Supabase renew silently first.
+        if (remaining !== null) {
+          timer = setTimeout(updateNotice, Math.min(remaining * 1000 + 50, 2_147_483_647));
+        }
+      } else if (!checking) {
+        // Never call Auth methods inside onAuthStateChange: it holds the Auth lock.
+        timer = setTimeout(() => void checkExpiredSession(), 0);
+      }
+    }
+
+    async function checkExpiredSession() {
+      if (disposed || checking) return;
+      checking = true;
+      const startedAtRevision = revision;
+      try {
+        // getSession refreshes expired tokens and reuses renewals from other tabs.
+        const { data, error: sessionError } = await auth.getSession();
+        if (disposed || revision !== startedAtRevision) return;
+        const session = data.session;
+        if (!sessionError && session &&
+          (session.expires_at === undefined || session.expires_at > Date.now() / 1000)) {
+          acceptSession(session);
+        } else {
+          setNotice({ token: current?.access_token ?? "", expired: true });
+        }
+      } catch {
+        if (!disposed && revision === startedAtRevision) {
+          setNotice({ token: current?.access_token ?? "", expired: true });
+        }
+      } finally {
+        checking = false;
+        if (!disposed && revision !== startedAtRevision) updateNotice();
       }
     }
 
     function acceptSession(session: typeof current) {
       if (disposed) return;
+      revision++;
       current = session;
       initialized = true;
       setError(null);
       updateNotice();
     }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = auth.onAuthStateChange((_event, session) => {
       receivedEvent = true;
       acceptSession(session);
     });
-    void supabase.auth.getSession().then(({ data, error: sessionError }) => {
+    void auth.getSession().then(({ data, error: sessionError }) => {
       if (!receivedEvent && !sessionError) acceptSession(data.session);
     }).catch(() => {
       // Auth events remain subscribed if session retrieval temporarily fails.
