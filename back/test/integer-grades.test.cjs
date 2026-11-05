@@ -71,6 +71,8 @@ function fixture() {
     technicalSubjectResult: { upsert: async ({ create }) => create },
     importJob: { create: async () => ({ id }), update: async ({ data }) => ({ id, ...data }) },
   };
+  prisma.$queryRaw = async () => [{ id }];
+  prisma.$transaction = async (callback) => callback(prisma);
   const permissions = new PermissionsService(prisma);
   const audit = { logCreate: async () => {}, logUpdate: async () => {}, logImport: async () => {} };
   const academic = new AcademicGradesService(prisma, permissions, audit);

@@ -9,7 +9,6 @@ import { Workbook } from 'exceljs';
 
 import { AcademicGradesService } from '../academic-grades/academic-grades.service';
 import { CreateAcademicGradeDto } from '../academic-grades/dto/create-academic-grade.dto';
-import { UpdateAcademicGradeDto } from '../academic-grades/dto/update-academic-grade.dto';
 import { AuditService } from '../audit/audit.service';
 import { PermissionsService } from '../common/services/permissions.service';
 import { AuthenticatedUser } from '../common/types/authenticated-user.type';
@@ -280,7 +279,6 @@ export class ImportsService {
         ? { id: context.subjectId }
         : await this.findSubjectByName(row, context.schoolId, SubjectType.ACADEMIC);
     this.ensureSelectedSubject(context, subject.id);
-    let importedBlocks = 0;
 
     const gradeDtos = [1, 2, 3, 4].map((blockNumber) =>
       this.buildAcademicGradeDto(row, context, student.id, subject.id, blockNumber),
@@ -289,55 +287,11 @@ export class ImportsService {
     const ceex = this.optionalIntegerGrade(row, 'ceex');
     const ce = this.optionalIntegerGrade(row, 'ce');
 
-    for (const gradeDto of gradeDtos) {
-      const blockNumber = gradeDto.blockNumber;
-
-      if (!this.hasAcademicScores(gradeDto)) {
-        continue;
-      }
-
-      const existing = await this.prisma.academicGrade.findUnique({
-        where: {
-          schoolId_schoolYearId_studentId_subjectId_blockNumber: {
-            schoolId: context.schoolId,
-            schoolYearId: context.schoolYearId,
-            studentId: student.id,
-            subjectId: subject.id,
-            blockNumber,
-          },
-        },
-        select: { id: true },
-      });
-
-      if (existing) {
-        await this.academicGradesService.update(
-          existing.id,
-          this.toAcademicUpdateDto(gradeDto),
-          user,
-        );
-      } else {
-        await this.academicGradesService.create(gradeDto, user);
-      }
-
-      importedBlocks += 1;
-    }
-
-    if (importedBlocks === 0) {
+    const pending = gradeDtos.filter((dto) => this.hasAcademicScores(dto));
+    if (pending.length === 0) {
       throw new BadRequestException('No academic grade columns were provided.');
     }
-
-    if (cec !== undefined || ceex !== undefined || ce !== undefined) {
-      await this.academicGradesService.finalEvaluations(
-        {
-          studentId: student.id,
-          subjectId: subject.id,
-          cec,
-          ceex,
-          ce,
-        },
-        user,
-      );
-    }
+    await this.academicGradesService.saveImportedBlocks(pending, user, { cec, ceex, ce });
   }
 
   private async importTechnicalGradeRow(
@@ -744,6 +698,13 @@ export class ImportsService {
             : 'Completa solamente las columnas que necesites importar.',
       ],
       ['Las celdas de notas vacías conservan los valores existentes.'],
+      ...(dto.type === 'academic'
+        ? [
+            [
+              'Se ignoran las notas de períodos cerrados y las que no cambiaron. Cada fila se guarda completa o no se guarda.',
+            ],
+          ]
+        : []),
       ['Las notas se validan con las mismas reglas del registro de calificaciones.'],
       [
         'Las calificaciones deben ser números enteros. Por ejemplo: 90 o 90.0 son válidos; 90.5 no se admite.',
@@ -920,19 +881,6 @@ export class ImportsService {
       recovery1Score: this.optionalIntegerGrade(row, `${key}_r1`),
       recovery2Score: this.optionalIntegerGrade(row, `${key}_r2`),
       specialScore: includeSpecial ? this.optionalIntegerGrade(row, `${key}_esp`) : undefined,
-    };
-  }
-
-  private toAcademicUpdateDto(dto: CreateAcademicGradeDto): UpdateAcademicGradeDto {
-    return {
-      p1: dto.p1,
-      rp1: dto.rp1,
-      p2: dto.p2,
-      rp2: dto.rp2,
-      p3: dto.p3,
-      rp3: dto.rp3,
-      p4: dto.p4,
-      rp4: dto.rp4,
     };
   }
 

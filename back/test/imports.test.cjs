@@ -26,7 +26,7 @@ function fixture() {
       update: async ({ data }) => ({ id: 'job', ...data }),
     },
   };
-  const academic = { create: async (data) => { writes.push(data); } };
+  const academic = { saveImportedBlocks: async (blocks) => { writes.push(...blocks); } };
   const service = new ImportsService(prisma, new PermissionsService(prisma), academic, {}, { logImport: async () => {} });
   return { service, prisma, writes };
 }
@@ -137,7 +137,7 @@ test('academic template updates existing grades without sending blank cells as r
   const { service, prisma, writes } = fixture();
   prisma.academicGrade.findUnique = async () => ({ id: 'existing-grade' });
   const updates = [];
-  service.academicGradesService.update = async (id, dto) => { updates.push({ id, dto }); };
+  service.academicGradesService.saveImportedBlocks = async (blocks) => { updates.push(...blocks); };
   const workbook = new Workbook();
   await workbook.xlsx.load(await service.generateTemplate({ ...selection, type: 'academic' }, user));
   workbook.worksheets[0].getCell('D5').value = 80;
@@ -148,10 +148,10 @@ test('academic template updates existing grades without sending blank cells as r
   assert.equal(result.totalRows, 1);
   assert.equal(writes.length, 0);
   assert.equal(updates.length, 1);
-  assert.equal(updates[0].id, 'existing-grade');
-  assert.equal(updates[0].dto.p2, 80);
-  assert.equal(updates[0].dto.p1, undefined);
-  assert.equal(updates[0].dto.rp1, undefined);
+  assert.equal(updates[0].blockNumber, 1);
+  assert.equal(updates[0].p2, 80);
+  assert.equal(updates[0].p1, undefined);
+  assert.equal(updates[0].rp1, undefined);
 });
 
 test('academic template keeps zero scores and reports the original Excel row after skipping unfilled students', async () => {

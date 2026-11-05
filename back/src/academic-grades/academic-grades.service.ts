@@ -11,6 +11,7 @@ import { PermissionsService } from '../common/services/permissions.service';
 import { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import { rethrowKnownPrismaError } from '../common/utils/prisma-error.util';
 import { ensureIntegerGrade } from '../common/utils/integer-grade.util';
+import { lockSchoolYear } from '../common/utils/lock-school-year.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { AcademicFinalEvaluationDto } from './dto/academic-final-evaluation.dto';
 import { BulkAcademicGradesDto } from './dto/bulk-academic-grades.dto';
@@ -27,6 +28,9 @@ type AcademicScoreFields = {
   p4?: number | null;
   rp4?: number | null;
 };
+
+const ACADEMIC_SCORE_FIELDS = ['p1', 'rp1', 'p2', 'rp2', 'p3', 'rp3', 'p4', 'rp4'] as const;
+type FinalScores = Pick<AcademicFinalEvaluationDto, 'cec' | 'ceex' | 'ce'>;
 
 type PersistedAcademicScoreFields = {
   p1?: Prisma.Decimal | number | string | null;
@@ -140,28 +144,34 @@ export class AcademicGradesService {
 
   async create(dto: CreateAcademicGradeDto, user: AuthenticatedUser) {
     const context = await this.validateCreateContext(dto, user);
-    await this.ensurePeriodsEditable(context, dto);
     const pc = this.calculatePc(dto);
 
     try {
-      const grade = await this.prisma.academicGrade.create({
-        data: {
-          ...dto,
-          pc,
-          createdBy: user.id,
-          updatedBy: user.id,
-        },
-      });
-      const result = await this.recalculateResult(context, user.id);
-      await this.auditService.logCreate({
-        schoolId: grade.schoolId,
-        userId: user.id,
-        entity: 'AcademicGrade',
-        entityId: grade.id,
-        newValue: { grade, result },
-      });
+      return await this.prisma.$transaction(async (tx) => {
+        await lockSchoolYear(tx, context.schoolId, context.schoolYearId);
+        await this.ensurePeriodsEditable(context, dto, {}, tx);
+        const grade = await tx.academicGrade.create({
+          data: {
+            ...dto,
+            pc,
+            createdBy: user.id,
+            updatedBy: user.id,
+          },
+        });
+        const result = await this.recalculateResult(context, user.id, tx);
+        await this.auditService.logCreate(
+          {
+            schoolId: grade.schoolId,
+            userId: user.id,
+            entity: 'AcademicGrade',
+            entityId: grade.id,
+            newValue: { grade, result },
+          },
+          tx,
+        );
 
-      return { grade, result };
+        return { grade, result };
+      });
     } catch (error) {
       rethrowKnownPrismaError(error);
     }
@@ -184,29 +194,151 @@ export class AcademicGradesService {
 
     await this.validateAcademicSubjectForCourse(context, user);
 
-    await this.ensurePeriodsEditable(context, dto, current);
-    const mergedScores = this.mergeScores(current, dto);
-    const pc = this.calculatePc(mergedScores);
+    return this.prisma.$transaction(async (tx) => {
+      await lockSchoolYear(tx, context.schoolId, context.schoolYearId);
+      const previous = await tx.academicGrade.findUnique({ where: { id } });
+      if (!previous) throw new NotFoundException('Academic grade not found.');
+      await this.ensurePeriodsEditable(context, dto, previous, tx);
+      const mergedScores = this.mergeScores(previous, dto);
+      const pc = this.calculatePc(mergedScores);
 
-    const grade = await this.prisma.academicGrade.update({
-      where: { id },
-      data: {
-        ...dto,
-        pc,
-        updatedBy: user.id,
-      },
-    });
-    const result = await this.recalculateResult(context, user.id);
-    await this.auditService.logUpdate({
-      schoolId: grade.schoolId,
-      userId: user.id,
-      entity: 'AcademicGrade',
-      entityId: grade.id,
-      oldValue: current,
-      newValue: { grade, result },
-    });
+      const grade = await tx.academicGrade.update({
+        where: { id },
+        data: {
+          ...dto,
+          pc,
+          updatedBy: user.id,
+        },
+      });
+      const result = await this.recalculateResult(context, user.id, tx);
+      await this.auditService.logUpdate(
+        {
+          schoolId: grade.schoolId,
+          userId: user.id,
+          entity: 'AcademicGrade',
+          entityId: grade.id,
+          oldValue: previous,
+          newValue: { grade, result },
+        },
+        tx,
+      );
 
-    return { grade, result };
+      return { grade, result };
+    });
+  }
+
+  async saveImportedBlocks(
+    dtos: CreateAcademicGradeDto[],
+    user: AuthenticatedUser,
+    finalScores: FinalScores = {},
+  ): Promise<void> {
+    if (dtos.length === 0) return;
+    const context = await this.validateCreateContext(dtos[0], user, false);
+    const blocks = new Set<number>();
+    for (const dto of dtos) {
+      if (
+        Object.entries(context).some(
+          ([key, value]) => dto[key as keyof AcademicContext] !== value,
+        ) ||
+        !Number.isInteger(dto.blockNumber) ||
+        dto.blockNumber < 1 ||
+        dto.blockNumber > 4 ||
+        blocks.has(dto.blockNumber)
+      ) {
+        throw new BadRequestException(
+          'Los bloques deben ser únicos y pertenecer al mismo estudiante y asignatura.',
+        );
+      }
+      blocks.add(dto.blockNumber);
+    }
+    for (const field of ['cec', 'ceex', 'ce'] as const) {
+      ensureIntegerGrade(field.toUpperCase(), finalScores[field]);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await lockSchoolYear(tx, context.schoolId, context.schoolYearId);
+      const periods = await this.getPeriods(context.schoolId, context.schoolYearId, tx);
+      const pending = [];
+      for (const dto of dtos) {
+        const previous = await tx.academicGrade.findUnique({
+          where: {
+            schoolId_schoolYearId_studentId_subjectId_blockNumber: {
+              schoolId: context.schoolId,
+              schoolYearId: context.schoolYearId,
+              studentId: context.studentId,
+              subjectId: context.subjectId,
+              blockNumber: dto.blockNumber,
+            },
+          },
+        });
+        const changedScores: UpdateAcademicGradeDto = {};
+        for (const field of ACADEMIC_SCORE_FIELDS) {
+          const value = dto[field];
+          // Blank cells preserve data. Closed and unchanged scores are ignored.
+          if (
+            value == null ||
+            !periods[`${field}Enabled`] ||
+            this.toNumber(previous?.[field]) === value
+          )
+            continue;
+          changedScores[field] = value;
+        }
+        if (Object.keys(changedScores).length === 0) continue;
+        const pc = this.calculatePc(
+          previous ? this.mergeScores(previous, changedScores) : changedScores,
+        );
+        pending.push({ blockNumber: dto.blockNumber, previous, changedScores, pc });
+      }
+
+      const changes = [];
+      for (const { blockNumber, previous, changedScores, pc } of pending) {
+        const grade = previous
+          ? await tx.academicGrade.update({
+              where: { id: previous.id },
+              data: { ...changedScores, pc, updatedBy: user.id },
+            })
+          : await tx.academicGrade.create({
+              data: {
+                ...context,
+                blockNumber,
+                ...changedScores,
+                pc,
+                createdBy: user.id,
+                updatedBy: user.id,
+              },
+            });
+        changes.push({ previous, grade });
+      }
+      const hasFinalScores = Object.values(finalScores).some((value) => value !== undefined);
+      let result = changes.length ? await this.recalculateResult(context, user.id, tx) : null;
+      if (hasFinalScores && !result) {
+        result =
+          (await tx.academicSubjectResult.findUnique({
+            where: {
+              schoolId_schoolYearId_studentId_subjectId: {
+                schoolId: context.schoolId,
+                schoolYearId: context.schoolYearId,
+                studentId: context.studentId,
+                subjectId: context.subjectId,
+              },
+            },
+          })) ?? (await this.recalculateResult(context, user.id, tx));
+      }
+      if (hasFinalScores && result) {
+        result = await this.saveFinalEvaluations(context, finalScores, result, user.id, tx);
+      }
+      for (const { previous, grade } of changes) {
+        const entry = {
+          schoolId: context.schoolId,
+          userId: user.id,
+          entity: 'AcademicGrade',
+          entityId: grade.id,
+          newValue: { grade, result },
+        };
+        if (previous) await this.auditService.logUpdate({ ...entry, oldValue: previous }, tx);
+        else await this.auditService.logCreate(entry, tx);
+      }
+    });
   }
 
   async bulk(dto: BulkAcademicGradesDto, user: AuthenticatedUser) {
@@ -225,7 +357,10 @@ export class AcademicGradesService {
 
   async recalculate(studentId: string, subjectId: string, user: AuthenticatedUser) {
     const context = await this.getContextByStudentAndSubject(studentId, subjectId, user);
-    return this.recalculateResult(context, user.id);
+    return this.prisma.$transaction(async (tx) => {
+      await lockSchoolYear(tx, context.schoolId, context.schoolYearId);
+      return this.recalculateResult(context, user.id, tx);
+    });
   }
 
   async finalEvaluations(dto: AcademicFinalEvaluationDto, user: AuthenticatedUser) {
@@ -233,7 +368,27 @@ export class AcademicGradesService {
       ensureIntegerGrade(field.toUpperCase(), dto[field]);
     }
     const context = await this.getContextByStudentAndSubject(dto.studentId, dto.subjectId, user);
-    const current = await this.recalculateResult(context, user.id);
+    return this.prisma.$transaction(async (tx) => {
+      await lockSchoolYear(tx, context.schoolId, context.schoolYearId);
+      const current = await this.recalculateResult(context, user.id, tx);
+      return this.saveFinalEvaluations(context, dto, current, user.id, tx);
+    });
+  }
+
+  private async saveFinalEvaluations(
+    context: AcademicContext,
+    dto: FinalScores,
+    current: Awaited<ReturnType<AcademicGradesService['recalculateResult']>>,
+    userId: string,
+    tx: Prisma.TransactionClient,
+  ) {
+    if (
+      ['cec', 'ceex', 'ce'].every((field) => {
+        const key = field as keyof FinalScores;
+        return dto[key] === undefined || dto[key] === this.toNumber(current[key]);
+      })
+    )
+      return current;
     const cf = current.cf;
 
     if (cf === null) {
@@ -255,7 +410,7 @@ export class AcademicGradesService {
     });
 
     const oldValue = current;
-    const result = await this.prisma.academicSubjectResult.update({
+    const result = await tx.academicSubjectResult.update({
       where: {
         schoolId_schoolYearId_studentId_subjectId: {
           schoolId: context.schoolId,
@@ -272,17 +427,20 @@ export class AcademicGradesService {
         cexf: computed.cexf,
         cef: computed.cef,
         status: computed.status,
-        updatedBy: user.id,
+        updatedBy: userId,
       },
     });
-    await this.auditService.logUpdate({
-      schoolId: result.schoolId,
-      userId: user.id,
-      entity: 'AcademicSubjectResult',
-      entityId: result.id,
-      oldValue,
-      newValue: result,
-    });
+    await this.auditService.logUpdate(
+      {
+        schoolId: result.schoolId,
+        userId,
+        entity: 'AcademicSubjectResult',
+        entityId: result.id,
+        oldValue,
+        newValue: result,
+      },
+      tx,
+    );
 
     return result;
   }
@@ -337,8 +495,9 @@ export class AcademicGradesService {
   private async validateCreateContext(
     dto: CreateAcademicGradeDto,
     user: AuthenticatedUser,
+    validateScores = true,
   ): Promise<AcademicContext> {
-    this.validateScoreRules(dto);
+    if (validateScores) this.validateScoreRules(dto);
 
     const student = await this.prisma.student.findFirst({
       where: {
@@ -437,8 +596,12 @@ export class AcademicGradesService {
     return context;
   }
 
-  private async recalculateResult(context: AcademicContext, userId: string) {
-    const grades = await this.prisma.academicGrade.findMany({
+  private async recalculateResult(
+    context: AcademicContext,
+    userId: string,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const grades = await client.academicGrade.findMany({
       where: {
         schoolId: context.schoolId,
         schoolYearId: context.schoolYearId,
@@ -463,7 +626,7 @@ export class AcademicGradesService {
       ? this.roundInteger(this.average(pcs))
       : null;
 
-    const current = await this.prisma.academicSubjectResult.findUnique({
+    const current = await client.academicSubjectResult.findUnique({
       where: {
         schoolId_schoolYearId_studentId_subjectId: {
           schoolId: context.schoolId,
@@ -481,7 +644,7 @@ export class AcademicGradesService {
       ce: current?.ce ?? null,
     });
 
-    return this.prisma.academicSubjectResult.upsert({
+    return client.academicSubjectResult.upsert({
       where: {
         schoolId_schoolYearId_studentId_subjectId: {
           schoolId: context.schoolId,
@@ -558,8 +721,12 @@ export class AcademicGradesService {
     return { ccf, cexf, cef, status };
   }
 
-  private async getPeriods(schoolId: string, schoolYearId: string) {
-    const periods = await this.prisma.schoolYear.findFirst({
+  private async getPeriods(
+    schoolId: string,
+    schoolYearId: string,
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const periods = await client.schoolYear.findFirst({
       where: { id: schoolYearId, schoolId },
       select: {
         p1Enabled: true,
@@ -584,8 +751,9 @@ export class AcademicGradesService {
     context: Pick<AcademicContext, 'schoolId' | 'schoolYearId'>,
     scores: AcademicScoreFields,
     current: PersistedAcademicScoreFields = {},
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
   ): Promise<void> {
-    const periods = await this.getPeriods(context.schoolId, context.schoolYearId);
+    const periods = await this.getPeriods(context.schoolId, context.schoolYearId, client);
 
     for (const period of [1, 2, 3, 4] as const) {
       for (const field of [`p${period}`, `rp${period}`] as const) {

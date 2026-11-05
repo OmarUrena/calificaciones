@@ -1,5 +1,14 @@
 # PROGRESS.md
 
+# Avance del 2026-11-04: importación acumulativa y sesiones
+
+- Implementación sobre `origin/main` (`9ee70d6`) en `feature/mejoras-importacion-sesion`, sin fusionar la rama antigua. Se conserva el control de P/RP en `SchoolYear` y la validación de notas enteras.
+- La importación académica conserva celdas vacías e ignora notas de períodos cerrados o iguales a las guardadas. Los bloques, resultados, evaluaciones finales y auditorías de cada fila comparten una transacción: un fallo revierte toda la fila. Reimportar una fila sin cambios no escribe notas ni resultados ni genera auditorías de calificaciones; el trabajo de importación conserva su resumen habitual.
+- Guardar notas, recalcular y cerrar/reabrir períodos adquieren un bloqueo de la fila del año escolar, filtrado por escuela. La edición manual continúa rechazando cambios en períodos cerrados. No se añade otra tabla ni se requieren migraciones.
+- Las sesiones conservan la renovación y los borradores existentes. Los fallos temporales de Supabase Auth responden `503`, los tokens rechazados `401`, y la consulta tiene un límite de ocho segundos. Los metadatos editables del usuario no se utilizan para identificar cuentas internas. El login limpia el caché anterior; los cambios de cuenta y el cierre explícito en otra pestaña limpian los datos y navegan al login. El cierre de sesión espera la respuesta y avisa si falla. No se incorpora cierre por inactividad.
+- Agregado `postinstall` para regenerar Prisma Client, además de la generación que ya se ejecutaba al compilar. La pantalla y las instrucciones de la plantilla explican el comportamiento acumulativo.
+- Verificación: compilaciones de producción de backend y frontend, TypeScript frontend y lint correctos; 52 pruebas de períodos, importaciones, enteros y autenticación aprobadas. Pasan `check-session.mjs`, `check-session-notice.mjs` y `check-session-account.mjs`. Las pruebas de concurrencia y rollback usan persistencia simulada; no se modificó ni se probó la base de datos real. Pendiente desplegar backend y frontend.
+
 # Avance del 2026-11-04
 
 - Ajustada la generación de PDF de asignaturas: cada fila abre una sección «PDF de calificaciones» con casillas para marcar uno o varios períodos o RA, botones para marcar todos y limpiar selección, y generación deshabilitada cuando no hay selección. Los RA se cargan al abrir la sección; se muestran errores y reintentos sin perder la selección.

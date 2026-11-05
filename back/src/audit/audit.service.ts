@@ -54,12 +54,18 @@ export class AuditService {
     return auditLog;
   }
 
-  logCreate(input: Omit<AuditLogInput, 'action' | 'oldValue'>) {
-    return this.log({ ...input, action: AuditAction.CREATE });
+  logCreate(
+    input: Omit<AuditLogInput, 'action' | 'oldValue'>,
+    client: Pick<Prisma.TransactionClient, 'auditLog'> = this.prisma,
+  ) {
+    return this.log({ ...input, action: AuditAction.CREATE }, client);
   }
 
-  logUpdate(input: Omit<AuditLogInput, 'action'>) {
-    return this.log({ ...input, action: AuditAction.UPDATE });
+  logUpdate(
+    input: Omit<AuditLogInput, 'action'>,
+    client: Pick<Prisma.TransactionClient, 'auditLog'> = this.prisma,
+  ) {
+    return this.log({ ...input, action: AuditAction.UPDATE }, client);
   }
 
   logDelete(

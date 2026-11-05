@@ -53,6 +53,7 @@ export function ImportUploader({ selection, onBusyChange }: {
           <p className="mt-1 text-sm text-institutional-gray">
             Descarga la plantilla del curso y completa la hoja Datos. Se admiten archivos .xlsx y .xlsm.
             {selection.type !== "students" && " La plantilla incluye los números de lista; las filas sin notas se omiten. Las celdas vacías conservan las notas existentes."}
+            {selection.type === "academic" && " Se ignoran las notas de períodos cerrados y las que no cambiaron. Cada fila se guarda completa o no se guarda."}
           </p>
         </div>
         {selection.type === "academic" && <p className="text-sm text-institutional-gray">Para importar CEC, CEEX o CE, incluye también al menos una nota de bloque en la fila.</p>}

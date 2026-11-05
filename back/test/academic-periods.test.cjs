@@ -50,6 +50,8 @@ function fixture() {
     academicSubjectResult: { findMany: async () => [], findUnique: async () => null, upsert: async ({ create }) => create },
     importJob: { create: async () => ({ id: 'job' }), update: async ({ data }) => ({ id: 'job', ...data }) },
   };
+  prisma.$queryRaw = async () => [{ id: 'year' }];
+  prisma.$transaction = async (callback) => callback(prisma);
   const permissions = new PermissionsService(prisma);
   const auditService = { logCreate: async (entry) => audit.push(entry), logUpdate: async (entry) => audit.push(entry), logImport: async () => {} };
   const grades = new AcademicGradesService(prisma, permissions, auditService);
@@ -134,7 +136,7 @@ test('register includes period states and the lookup is scoped to the school and
   await assert.rejects(() => grades.update('grade', { p2: 80 }, admin), (error) => error.getStatus() === 404);
 });
 
-test('Excel import reports a closed period error without writing the protected grade', async () => {
+test('Excel import ignores a closed period without writing the protected grade', async () => {
   const { imports, writes } = fixture();
   const selection = { schoolYearId: 'year', courseId: 'course', subjectId: 'subject' };
   const workbook = new Workbook();
@@ -143,8 +145,8 @@ test('Excel import reports a closed period error without writing the protected g
   const result = await imports.importAcademicGrades({
     originalname: 'notas.xlsx', buffer: Buffer.from(await workbook.xlsx.writeBuffer()),
   }, selection, admin);
-  assert.equal(result.errorRows, 1);
-  assert.match(JSON.stringify(result.errors), /P1 está desactivado/);
+  assert.equal(result.errorRows, 0);
+  assert.equal(result.successRows, 1);
   assert.equal(writes.length, 0);
 });
 

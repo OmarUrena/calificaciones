@@ -5,6 +5,7 @@ import { AuditService } from '../audit/audit.service';
 import { PermissionsService } from '../common/services/permissions.service';
 import { AuthenticatedUser } from '../common/types/authenticated-user.type';
 import { rethrowKnownPrismaError } from '../common/utils/prisma-error.util';
+import { lockSchoolYear } from '../common/utils/lock-school-year.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSchoolYearDto } from './dto/create-school-year.dto';
 import { UpdateSchoolYearDto } from './dto/update-school-year.dto';
@@ -50,26 +51,36 @@ export class SchoolYearsService {
   }
 
   async update(id: string, dto: UpdateSchoolYearDto, user: AuthenticatedUser) {
-    const oldValue = await this.findAccessibleById(id, user);
+    const accessible = await this.findAccessibleById(id, user);
 
     try {
-      const schoolYear = await this.prisma.schoolYear.update({
-        where: { id: oldValue.id },
-        data: {
-          ...dto,
-          updatedBy: user.id,
-        },
-      });
-      await this.auditService.logUpdate({
-        schoolId: schoolYear.schoolId,
-        userId: user.id,
-        entity: 'SchoolYear',
-        entityId: schoolYear.id,
-        oldValue,
-        newValue: schoolYear,
-      });
+      return await this.prisma.$transaction(async (tx) => {
+        await lockSchoolYear(tx, accessible.schoolId, id);
+        const oldValue = await tx.schoolYear.findFirst({
+          where: { id, schoolId: accessible.schoolId },
+        });
+        if (!oldValue) throw new NotFoundException('School year not found.');
+        const schoolYear = await tx.schoolYear.update({
+          where: { id: oldValue.id },
+          data: {
+            ...dto,
+            updatedBy: user.id,
+          },
+        });
+        await this.auditService.logUpdate(
+          {
+            schoolId: schoolYear.schoolId,
+            userId: user.id,
+            entity: 'SchoolYear',
+            entityId: schoolYear.id,
+            oldValue,
+            newValue: schoolYear,
+          },
+          tx,
+        );
 
-      return schoolYear;
+        return schoolYear;
+      });
     } catch (error) {
       rethrowKnownPrismaError(error);
     }
