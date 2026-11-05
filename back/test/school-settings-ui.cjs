@@ -2,6 +2,10 @@
 // API and image requests are simulated. No real database or Storage writes occur.
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
+const { resolve } = require('node:path');
+require('dotenv').config({ path: [resolve(__dirname, '../../front/.env.local'), resolve(__dirname, '../../front/.env')], quiet: true });
+const authUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const storageKey = authUrl ? `sb-${new URL(authUrl).hostname.split('.')[0]}-auth-token` : null;
 const origin = 'http://localhost:3100';
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aEAAAAABJRU5ErkJggg==', 'base64');
 
@@ -11,7 +15,14 @@ const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
     for (const role of ['ADMIN', 'TEACHER', 'SUPER_ADMIN']) {
       const context = await browser.newContext({ viewport: { width: role === 'ADMIN' ? 390 : 1280, height: 844 } });
       await context.addCookies([{ name: 'califapp_token', value: 'test-token', url: origin }]);
-      await context.addInitScript(() => localStorage.setItem('califapp_token', 'test-token'));
+      await context.addInitScript((key) => {
+        localStorage.setItem('califapp_token', 'test-token');
+        if (key) localStorage.setItem(key, JSON.stringify({
+          access_token: 'test-token', refresh_token: 'test-refresh', token_type: 'bearer',
+          expires_at: Math.floor(Date.now() / 1000) + 3600,
+          user: { id: 'user', email: 'test@example.test' },
+        }));
+      }, storageKey);
       let school = { id: 'school-a', name: 'Escuela original', code: 'A', address: 'Dirección anterior', phone: '123', logoUrl: null, isActive: true };
       let failUpload = true;
       const patches = [];
@@ -65,9 +76,11 @@ const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
         await name.fill('  Escuela actualizada  ');
         await page.getByLabel('Dirección', { exact: true }).fill('');
         await page.getByLabel('Teléfono', { exact: true }).fill('');
+        await page.getByLabel('Regional educativa', { exact: true }).fill('  08 Santiago  ');
         await page.getByRole('button', { name: 'Guardar datos', exact: true }).click();
         await page.getByText('Datos de la escuela guardados.').waitFor();
-        assert.deepEqual(patches[0], { name: 'Escuela actualizada', code: 'A', address: '', phone: '' });
+        assert.deepEqual(patches[0], { name: 'Escuela actualizada', code: 'A', address: '', phone: '',
+          educationalRegion: '08 Santiago', educationalDistrict: '', province: '', municipality: '' });
         await page.getByText('Escuela actualizada', { exact: false }).first().waitFor();
         await name.fill('Borrador sin guardar');
         const input = page.getByLabel('Imagen del logo', { exact: true });
@@ -92,6 +105,11 @@ const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
         await name.waitFor();
         assert.equal(await name.inputValue(), 'Escuela actualizada');
         assert.equal(await page.getByLabel('Dirección', { exact: true }).inputValue(), '');
+        assert.equal(await page.getByLabel('Regional educativa', { exact: true }).inputValue(), '08 Santiago');
+        await page.getByLabel('Regional educativa', { exact: true }).fill('');
+        await page.getByRole('button', { name: 'Guardar datos', exact: true }).click();
+        await page.getByText('Datos de la escuela guardados.').waitFor();
+        assert.equal(patches.at(-1).educationalRegion, '');
       }
       assert.deepEqual(errors, []);
       console.log(`Configuración ${role}: OK`);

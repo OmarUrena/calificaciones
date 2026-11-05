@@ -71,6 +71,14 @@ los inputs. La compilación debe seguir regenerando Prisma.
 
 ## Boletines PDF
 
+La portada conserva los recuadros de firmas y observaciones, usa la misma fuente
+Arial de las notas y muestra código, dirección y regional educativa del centro.
+El campo opcional `educationalRegion` se edita tanto en Escuelas como en
+Configuración de escuela. La migración
+`20261104140000_school_educational_region` añade esa columna a `schools`.
+Aplicar la migración y publicar backend y frontend juntos; el backend debe
+regenerar Prisma con `npm run build`.
+
 La sección «Mis asignaturas» permite abrir «PDF de calificaciones» y marcar
 uno o varios períodos o RA. `GET /api/reports/assignments/:assignmentId/grades`
 recibe períodos con parámetros repetidos, por ejemplo `?periods=1&periods=3`,

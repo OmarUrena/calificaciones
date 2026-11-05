@@ -117,13 +117,14 @@ test('HTTP settings and logo routes enforce roles and school boundaries, persist
     assert.deepEqual(uploads, []);
     const saved = await fetch(`${origin}/api/schools/school-a`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'Nuevo nombre', code: 'A2', address: '', phone: '' }),
+      body: JSON.stringify({ name: 'Nuevo nombre', code: 'A2', address: '', phone: '', educationalRegion: '08 Santiago' }),
     });
     assert.equal(saved.status, 200);
     const data = await saved.json();
     assert.equal(data.name, 'Nuevo nombre');
     assert.equal(data.address, '');
     assert.equal(data.phone, '');
+    assert.equal(data.educationalRegion, '08 Santiago');
     const uploaded = await fetch(`${origin}/api/schools/school-a/logo`, { method: 'POST', body: body() });
     assert.equal(uploaded.status, 201);
     assert.equal((await uploaded.json()).logoUrl, 'https://storage.example.test/school-a/logo.png');
@@ -131,6 +132,18 @@ test('HTTP settings and logo routes enforce roles and school boundaries, persist
     assert.equal(audit.length, 2);
     assert.equal(audit[1].oldValue.logoUrl, null);
     assert.equal(audit[1].newValue.logoUrl, schools['school-a'].logoUrl);
+    assert.equal(audit[0].newValue.educationalRegion, '08 Santiago');
+    const cleared = await fetch(`${origin}/api/schools/school-a`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ educationalRegion: '' }),
+    });
+    assert.equal(cleared.status, 200);
+    assert.equal((await cleared.json()).educationalRegion, '');
+    const invalid = await fetch(`${origin}/api/schools/school-a`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ educationalRegion: 8 }),
+    });
+    assert.equal(invalid.status, 400);
     assert.equal((await fetch(`${origin}/api/schools/school-b/logo`, { method: 'POST', body: body(), headers: { 'x-test-role': 'SUPER_ADMIN' } })).status, 201);
   } finally { await app.close(); }
 });

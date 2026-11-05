@@ -4,6 +4,7 @@ export type School = {
   code: string;
   address?: string | null;
   phone?: string | null;
+  educationalRegion?: string | null;
   educationalDistrict?: string | null;
   province?: string | null;
   municipality?: string | null;
@@ -18,6 +19,7 @@ export type SchoolFormValues = {
   code: string;
   address?: string;
   phone?: string;
+  educationalRegion?: string;
   educationalDistrict?: string;
   province?: string;
   municipality?: string;

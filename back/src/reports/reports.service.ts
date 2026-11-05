@@ -465,15 +465,13 @@ export class ReportsService {
           <table class="observations-table">
             <thead><tr><th>OBSERVACIONES</th></tr></thead>
             <tbody>
-              <tr><td></td></tr><tr><td></td></tr>
-              <tr><td class="cover-message">“No vayas donde el camino te lleve, ve donde no hay camino y deja huella...”<br />¡Buen trabajo!</td></tr>
-              ${Array.from({ length: 12 }, () => '<tr><td></td></tr>').join('')}
+              ${Array.from({ length: 16 }, () => '<tr><td></td></tr>').join('')}
             </tbody>
           </table>
         </div>
         <div class="cover-identity">
           <header class="cover-heading">
-            ${school.logoUrl ? `<img class="cover-logo" src="${this.escapeAttribute(school.logoUrl)}" alt="Logo del centro educativo" />` : '<div class="cover-logo-placeholder"></div>'}
+            ${school.logoUrl ? `<img class="cover-logo" src="${this.escapeAttribute(school.logoUrl)}" alt="Logo del centro educativo" />` : ''}
             <h1>${this.escapeHtml(school.name)}</h1>
             <p class="cover-title">BOLETÍN DE CALIFICACIONES</p>
             <h2>${this.escapeHtml(course.name)}</h2>
@@ -486,10 +484,11 @@ export class ReportsService {
           </div>
           <div class="cover-teacher">
             ${field('Docente', course.titular?.name)}
-            ${field('Centro educativo', school.name)}
           </div>
           <div class="cover-school">
-            ${field('Teléfono del centro', school.phone)}
+            <div class="cover-school-row">${field('Código del centro', school.code)}${field('Teléfono', school.phone)}</div>
+            ${field('Dirección', school.address)}
+            ${field('Regional educativa', school.educationalRegion)}
             ${field('Distrito educativo', school.educationalDistrict)}
           </div>
           <div class="cover-location">
@@ -726,34 +725,34 @@ export class ReportsService {
             .grades-page { height: 195mm; }
             .student-info { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr) auto minmax(0, 2fr); align-items: baseline; border-bottom: 1px solid #111827; padding-bottom: 8px; }
             .student-info > div { min-width: 0; overflow-wrap: anywhere; }
-            .report-cover { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 22mm; padding: 4mm 0; color: #000; }
-            .cover-notes { padding-top: 3mm; }
+            .report-cover { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14mm; padding: 3mm 0; color: #172b40; font-size: 14px; line-height: 1.4; }
+            .cover-notes { padding-top: 2mm; }
             .report-cover table { margin: 0; }
-            .report-cover th { background: #3399ff; color: #000; text-align: center; font-size: 10px; padding: 2px; }
-            .report-cover td, .report-cover th { border: 1px solid #000; }
-            .signature-table td { border-top: 0; border-bottom: 0; padding: 5px 4px; }
-            .signature-table tr:last-child td { border-bottom: 1px solid #000; padding-bottom: 8px; }
-            .signature-subtitle { text-align: center; font-weight: 700; }
-            .signature-line { display: flex; align-items: baseline; gap: 4px; }
-            .signature-line > span:last-child { flex: 1; border-bottom: 1px solid #000; }
-            .report-cover .observations-table { margin-top: 10mm; }
-            .observations-table td { height: 6mm; padding: 0 4px; }
-            .observations-table .cover-message { height: 13mm; text-align: center; vertical-align: middle; font-family: Georgia, serif; font-size: 11px; }
-            .cover-identity { font-size: 12px; line-height: 1.4; min-width: 0; overflow-wrap: anywhere; }
-            .cover-heading { text-align: center; }
-            .cover-logo { display: block; width: 32mm; height: 22mm; object-fit: contain; margin: 0 auto 3mm; }
-            .cover-logo-placeholder { height: 25mm; }
-            .cover-heading h1 { font-size: 16px; line-height: 1.25; margin: 0 0 2mm; }
-            .cover-title { color: #1f4e79; font-size: 14px; }
-            .cover-heading h2 { color: #1f4e79; font-size: 16px; line-height: 1.2; border: 0; padding: 0; margin: 2mm 0 10mm; }
-            .cover-heading .cover-year { margin-bottom: 4mm; }
+            .report-cover th { background: #eaf2f8; color: #1f4e79; text-align: center; font-size: 14px; padding: 9px 6px; letter-spacing: 0.3px; }
+            .report-cover td, .report-cover th { border: 1px solid #8fa6bb; }
+            .signature-table td { border-top: 0; border-bottom: 0; padding: 8px 10px; }
+            .signature-table tr:last-child td { border-bottom: 1px solid #8fa6bb; padding-bottom: 12px; }
+            .signature-subtitle { text-align: center; color: #52677b; }
+            .signature-line { display: flex; align-items: baseline; gap: 10px; }
+            .signature-line > span:last-child { flex: 1; border-bottom: 1px solid #8fa6bb; }
+            .report-cover .observations-table { margin-top: 8mm; }
+            .observations-table td { height: 6.5mm; padding: 0 8px; }
+            .cover-identity { min-width: 0; overflow-wrap: anywhere; border-top: 4px solid #1f4e79; padding-top: 4mm; }
+            .cover-heading { text-align: center; margin-bottom: 4mm; }
+            .cover-logo { display: block; width: 30mm; height: 18mm; object-fit: contain; margin: 0 auto 3mm; }
+            .cover-heading h1 { font-size: 22px; line-height: 1.2; margin: 0 0 3mm; color: #1f4e79; }
+            .cover-title { color: #1f4e79; font-size: 17px; font-weight: 700; letter-spacing: 0.6px; }
+            .cover-heading h2 { color: #364f68; font-size: 18px; line-height: 1.25; border: 0; padding: 0; margin: 3mm 0; }
+            .cover-heading .cover-year { display: inline-block; background: #eaf2f8; padding: 5px 14px; border-radius: 4px; margin: 2mm 0 0; font-size: 15px; }
             .cover-identity p { margin: 0 0 2mm; }
-            .cover-student-row { display: flex; justify-content: space-between; gap: 8px; }
-            .cover-value { text-decoration: underline; text-underline-offset: 2px; }
+            .cover-identity strong { color: #1f4e79; }
+            .cover-student { background: #f3f7fb; border-left: 3px solid #1f4e79; padding: 10px 12px 4px; font-size: 15px; }
+            .cover-student-row, .cover-school-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 12px; }
+            .cover-value { color: #172b40; }
             .cover-value:empty { display: inline-block; min-width: 30mm; border-bottom: 1px solid; }
-            .cover-teacher { margin-top: 7mm; }
-            .cover-school { margin-top: 12mm; }
-            .cover-location { margin-top: 7mm; }
+            .cover-teacher { margin-top: 3mm; }
+            .cover-school { margin-top: 3mm; border-top: 1px solid #cad6e1; padding-top: 3mm; }
+            .cover-location { margin-top: 3mm; border-top: 1px solid #cad6e1; padding-top: 3mm; }
             .empty { border: 1px solid #d1d5db; color: #6b7280; padding: 10px; }
           </style>
         </head>

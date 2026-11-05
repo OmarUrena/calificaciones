@@ -371,6 +371,7 @@ function SchoolDetails({
         <Detail label="Estado" value={school.isActive ? "Activa" : "Inactiva"} />
         <Detail label="Dirección" value={school.address || "No registrada"} />
         <Detail label="Teléfono" value={school.phone || "No registrado"} />
+        <Detail label="Regional educativa" value={school.educationalRegion || "No registrada"} />
         <Detail label="Distrito educativo" value={school.educationalDistrict || "No registrado"} />
         <Detail label="Provincia" value={school.province || "No registrada"} />
         <Detail label="Municipio" value={school.municipality || "No registrado"} />

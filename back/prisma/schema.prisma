@@ -13,6 +13,7 @@ model School {
   code                      String                     @unique
   address                   String?
   phone                     String?
+  educationalRegion         String?
   educationalDistrict       String?
   province                  String?
   municipality              String?

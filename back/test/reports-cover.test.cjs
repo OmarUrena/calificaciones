@@ -9,7 +9,9 @@ function fixture(id = 'one', listNumber = 1) {
   return {
     student: {
       id, firstName: `Ana ${id}`, lastName: 'Pérez & Díaz', listNumber,
-      school: { id: 'school', name: 'Instituto Politécnico de Prueba', phone: '809-000-0000',
+      school: { id: 'school', name: 'Instituto Politécnico de Prueba', code: '01234',
+        address: 'Av. Las Carreras, esquina Calle Principal, Santiago Oeste',
+        educationalRegion: '08 Santiago', phone: '809-000-0000',
         educationalDistrict: '0804 Santiago Noroeste', province: 'Santiago', municipality: 'Santiago Oeste' },
       schoolYear: { name: '2026-2027' },
       course: { id: 'course', name: '6TO Grado del Bachillerato Técnico Desarrollo y Administración de Aplicaciones Informáticas',
@@ -53,6 +55,9 @@ test('cover and compact grades header fit the printed pages with escaped school 
     const page = await browser.newPage({ viewport: { width: 980, height: 730 } });
     await page.emulateMedia({ media: 'print' });
     for (const period of [1, 2, 3, 4]) {
+      data.student.school.logoUrl = period === 2
+        ? 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aEAAAAABJRU5ErkJggg=='
+        : null;
       const html = reports.buildDocumentHtml(reports.buildStudentReportPages(data, period));
       assert.match(html, /Instituto &lt;Prueba&gt; &amp; Centro/);
       await page.setContent(html);
@@ -70,18 +75,28 @@ test('cover and compact grades header fit the printed pages with escaped school 
           coverHeight: cover.getBoundingClientRect().height,
           fitsWidth: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
           summaries: front.querySelectorAll('.academic-summary').length,
+          observationRows: cover.querySelectorAll('.observations-table tbody tr').length,
+          blankObservations: [...cover.querySelectorAll('.observations-table tbody td')].every((cell) => !cell.textContent.trim()),
+          font: getComputedStyle(cover).fontFamily,
+          gradesFont: getComputedStyle(front).fontFamily,
+          textSize: parseFloat(getComputedStyle(cover).fontSize),
         };
       });
       assert.deepEqual(layout.headerLabels, ['Estudiante:', 'Número de lista:', 'Curso:']);
       assert.equal(layout.sameRow, true);
       assert.equal(layout.schoolOnFront, false);
       assert.equal(layout.summaries, period === 4 ? 1 : 0);
-      for (const text of ['OBSERVACIONES', 'Docente de Prueba', '0804 Santiago Noroeste', 'Santiago Oeste', '2026-2027']) {
+      for (const text of ['OBSERVACIONES', 'Docente de Prueba', '0804 Santiago Noroeste', 'Santiago Oeste', '2026-2027', 'Código del centro', '01234', 'Dirección', 'Av. Las Carreras', 'Regional educativa', '08 Santiago']) {
         assert.ok(layout.coverFields.includes(text), text);
       }
       assert.ok(layout.frontHeight <= 740, `Front overflow P${period}: ${layout.frontHeight}`);
       assert.ok(layout.coverHeight <= 740, `Cover overflow P${period}: ${layout.coverHeight}`);
       assert.equal(layout.fitsWidth, true);
+      assert.equal(layout.observationRows, 16);
+      assert.equal(layout.blankObservations, true);
+      assert.equal(layout.font, layout.gradesFont);
+      assert.ok(layout.textSize >= 14);
+      assert.doesNotMatch(html, /No vayas|Buen trabajo|Georgia/);
       const pdf = await page.pdf({ format: 'Letter', landscape: true, printBackground: true,
         margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' } });
       assert.equal((pdf.toString('latin1').match(/\/Type\s*\/Page\b/g) || []).length, 2, `P${period} must print exactly two pages`);

@@ -21,6 +21,10 @@ export class UpdateSchoolDto {
 
   @IsOptional()
   @IsString()
+  educationalRegion?: string;
+
+  @IsOptional()
+  @IsString()
   educationalDistrict?: string;
 
   @IsOptional()

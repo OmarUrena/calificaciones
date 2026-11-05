@@ -16,6 +16,7 @@ const schema = z.object({
   code: z.string().trim().min(1, "El código es obligatorio."),
   address: z.string().trim(),
   phone: z.string().trim(),
+  educationalRegion: z.string().trim(),
   educationalDistrict: z.string().trim(),
   province: z.string().trim(),
   municipality: z.string().trim(),
@@ -24,6 +25,7 @@ const schema = z.object({
 function formValues(school: School): SchoolSettingsValues {
   return {
     name: school.name, code: school.code, address: school.address ?? "", phone: school.phone ?? "",
+    educationalRegion: school.educationalRegion ?? "",
     educationalDistrict: school.educationalDistrict ?? "",
     province: school.province ?? "", municipality: school.municipality ?? "",
   };
@@ -59,6 +61,7 @@ export function SchoolSettingsForm({ school, disabled, onSave }: {
         {([
           ["name", "Nombre de la institución"], ["code", "Código"],
           ["address", "Dirección"], ["phone", "Teléfono"],
+          ["educationalRegion", "Regional educativa"],
           ["educationalDistrict", "Distrito educativo"], ["province", "Provincia"],
           ["municipality", "Municipio"],
         ] as const).map(([field, label]) => (

@@ -14,6 +14,7 @@ const schoolSchema = z.object({
   code: z.string().min(1, "El código es obligatorio."),
   address: z.string().optional(),
   phone: z.string().optional(),
+  educationalRegion: z.string().optional(),
   educationalDistrict: z.string().optional(),
   province: z.string().optional(),
   municipality: z.string().optional(),
@@ -33,6 +34,7 @@ const emptyValues: SchoolFormValues = {
   code: "",
   address: "",
   phone: "",
+  educationalRegion: "",
   educationalDistrict: "",
   province: "",
   municipality: "",
@@ -64,6 +66,7 @@ export function SchoolForm({
             code: school.code,
             address: school.address ?? "",
             phone: school.phone ?? "",
+            educationalRegion: school.educationalRegion ?? "",
             educationalDistrict: school.educationalDistrict ?? "",
             province: school.province ?? "",
             municipality: school.municipality ?? "",
@@ -128,6 +131,7 @@ export function SchoolForm({
           </Field>
 
           {([
+            ["educationalRegion", "Regional educativa"],
             ["educationalDistrict", "Distrito educativo"],
             ["province", "Provincia"],
             ["municipality", "Municipio"],

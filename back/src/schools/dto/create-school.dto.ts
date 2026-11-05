@@ -19,6 +19,10 @@ export class CreateSchoolDto {
 
   @IsOptional()
   @IsString()
+  educationalRegion?: string;
+
+  @IsOptional()
+  @IsString()
   educationalDistrict?: string;
 
   @IsOptional()
