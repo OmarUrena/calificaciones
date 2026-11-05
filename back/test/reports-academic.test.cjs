@@ -99,6 +99,7 @@ test('an earlier report period includes all blocks but does not reveal later gra
   assert.doesNotMatch(html, />80\.1</);
   assert.doesNotMatch(html, />CF</);
   assert.doesNotMatch(html, />APPROVED</);
+  assert.doesNotMatch(html, /academic-summary|Promedios por bloque|>PC1</);
 });
 
 test('academic section still handles a report with no academic grades', () => {
