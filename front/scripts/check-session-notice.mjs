@@ -28,6 +28,8 @@ function fixture(lifetime = 3600) {
   let refreshMode = "success";
   let refreshCalls = 0;
   let sessionReads = 0;
+  let failLogin = false;
+  const loginCalls = [];
   const state = [];
   const timers = new Map();
   const events = new Map();
@@ -49,6 +51,13 @@ function fixture(lifetime = 3600) {
     },
     "react/jsx-runtime": { jsx, jsxs: jsx },
     "sonner": { toast: { success: (message) => successes.push(message) } },
+    "@/lib/auth": { login: async (credentials) => {
+      loginCalls.push(credentials);
+      await Promise.resolve();
+      if (failLogin) throw new Error("Contraseña incorrecta");
+      emit(fresh("reauthenticated"), "SIGNED_IN");
+      return { user: { email: credentials.email }, accessToken: "reauthenticated" };
+    } },
     "@/lib/session": {
       supabase: { auth: {
         getSession: () => {
@@ -79,13 +88,23 @@ function fixture(lifetime = 3600) {
   };
   const exports = {};
   vm.runInNewContext(source, {
-    exports, require: (name) => modules[name],
+    exports, require: (name) => modules[name], Error,
     Date: { now: () => now },
     setTimeout: (callback, delay) => { const id = Symbol(); timers.set(id, { callback, at: now + delay }); return id; },
     clearTimeout: (id) => timers.delete(id),
     window: target, document: { ...target, visibilityState: "visible" },
   });
-  function render() { cursor = 0; return exports.SessionExpiryNotice(); }
+  function render() { cursor = 0; return exports.SessionExpiryNotice({ email: "teacher@example.test" }); }
+  function find(tree, predicate) {
+    if (!tree || typeof tree !== "object") return null;
+    if (predicate(tree)) return tree;
+    for (const child of [tree.props?.children].flat()) {
+      const match = find(child, predicate);
+      if (match) return match;
+    }
+    return null;
+  }
+  const submitButton = () => find(render(), (node) => node.type === "button" && node.props.type === "submit");
   async function flush() { for (let i = 0; i < 12; i++) await Promise.resolve(); }
   async function advance(ms = 0) {
     now += ms;
@@ -96,13 +115,16 @@ function fixture(lifetime = 3600) {
   }
   assert.equal(render(), null);
   return {
-    render, emit, fresh, flush, advance, events, successes,
+    render, emit, fresh, flush, advance, events, successes, loginCalls, submitButton,
+    setFailLogin: (value) => { failLogin = value; },
+    enterPassword: (value) => find(render(), (node) => node.props?.id === "session-password").props.onChange({ target: { value } }),
+    passwordInput: () => find(render(), (node) => node.props?.id === "session-password"),
     sleep: (ms) => { now += ms; },
     setRead: (read) => { getSession = read; },
     setRefreshMode: (mode) => { refreshMode = mode; },
     reads: () => sessionReads,
     refreshCalls: () => refreshCalls,
-    continueSession: () => render().props.children[0].props.children[1].props.onClick(),
+    continueSession: () => find(render(), (node) => node.type === "form").props.onSubmit({ preventDefault() {} }),
     cleanup: () => {
       cleanup();
       assert.equal(unsubscribed, true);
@@ -158,10 +180,10 @@ modal.props.onCancel({ preventDefault: () => { cancelled = true; } });
 assert.equal(cancelled, true);
 app.setRefreshMode("error");
 app.continueSession();
-assert.match(content(app.render()), /Renovando sesión/);
+assert.match(content(app.render()), /Recuperando sesión/);
 await app.flush();
 assert.match(content(app.render()), /No se pudo renovar/);
-assert.equal(app.render().props.children[0].props.children[1].props.disabled, false);
+assert.equal(app.submitButton().props.disabled, false);
 app.setRefreshMode("success");
 app.continueSession();
 await app.flush();
@@ -177,7 +199,21 @@ assert.ok(app.render(), "a confirmed lost session still offers recovery without 
 app.setRefreshMode("missing");
 app.continueSession();
 await app.flush();
-assert.match(content(app.render()), /otra pestaña con la misma cuenta/);
+assert.match(content(app.render()), /Confirma tu contraseña/);
+assert.equal(app.passwordInput().props.type, "password");
+app.setFailLogin(true);
+app.enterPassword("wrong-password");
+app.continueSession();
+await app.flush();
+assert.match(content(app.render()), /Contraseña incorrecta/);
+assert.equal(app.passwordInput().props.value, "", "password is cleared after a rejected login");
+assert.equal(app.submitButton().props.disabled, false);
+app.setFailLogin(false);
+app.enterPassword("correct-password");
+app.continueSession();
+await app.flush();
+assert.deepEqual({ ...app.loginCalls.at(-1) }, { email: "teacher@example.test", password: "correct-password" }, "reauthentication stays on the editor's account");
+assert.equal(app.render(), null, "reauthentication recovers in place without navigating or clearing drafts");
 app.emit(app.fresh("other-tab"), "SIGNED_IN");
 assert.equal(app.render(), null);
 app.cleanup();

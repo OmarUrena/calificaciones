@@ -1,5 +1,15 @@
 # PROGRESS.md
 
+# Avance del 2026-11-05: recuperación de sesiones durante uso prolongado
+
+- Los registros reales de Supabase consultados muestran 11 errores `over_request_rate_limit` (`429`) y 13 `refresh_token_not_found` en renovaciones durante las últimas 24 horas. Se reprodujo con el SDK instalado que un `429` al renovar un token vencido elimina la credencial de renovación.
+- Agregado `createAuthFetch`: los límites temporales de renovación conservan las credenciales, respetan `Retry-After` con un mínimo de un minuto y evitan solicitudes repetidas durante la espera. Las solicitudes de renovación se cancelan si quedan bloqueadas más de 15 segundos. No se modifica la duración de los tokens ni la configuración de Supabase.
+- El aviso permite confirmar la contraseña de la cuenta actual dentro de la misma página cuando la sesión ya no puede renovarse. No navega ni desmonta el editor ni borra su caché. La contraseña se limpia al terminar el intento o recuperarse la sesión; se puede volver a intentar si falla. Se vuelve a comprobar la sesión al recuperar la conexión.
+- El cierre explícito y la limpieza de un login rechazado usan `scope: "local"` para evitar revocar sesiones en otros dispositivos. Un error temporal del perfil no cierra una sesión recién autenticada.
+- Verificación: build frontend y TypeScript correctos; pasan los tres scripts de regresión de sesiones. La prueba con el SDK real simula un `429`, conserva la credencial y renueva durante más de dos horas de reloj simulado; también verifica espera y cancelación de solicitudes bloqueadas. La prueba Playwright simula tres horas, revocación, contraseña incorrecta, reautenticación correcta y guardado con el nuevo token: se conserva el mismo elemento del editor y la nota pendiente `85`. Auth y API simulados, sin escrituras reales.
+- La consulta de avisos de seguridad también encontró configuraciones preexistentes independientes de este fallo: [RLS desactivado en tablas públicas](https://supabase.com/docs/guides/database/database-linter?lint=0013_rls_disabled_in_public) y [protección contra contraseñas filtradas desactivada](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection). No se cambian tablas ni permisos en esta corrección.
+- Se conservan importaciones y períodos. Pendiente desplegar el frontend y confirmar el resultado con el usuario afectado.
+
 # Avance del 2026-11-05: aviso inmediato de sesión
 
 - Reproducido el aviso inmediato del componente anterior con un token recién emitido de cinco minutos: el margen fijo de aviso era también de cinco minutos. El componente confundía el vencimiento del token con la necesidad de intervención del usuario y trataba una sesión nula o sin fecha de vencimiento como vencida.

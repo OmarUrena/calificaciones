@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { login } from "@/lib/auth";
 import { refreshAccessToken, supabase } from "@/lib/session";
 
 type Notice = { token: string; expired: boolean };
@@ -15,10 +16,12 @@ function openSessionDialog(dialog: HTMLDialogElement | null) {
   return () => dialog.close();
 }
 
-export function SessionExpiryNotice() {
+export function SessionExpiryNotice({ email }: { email: string }) {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [isRenewing, setIsRenewing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsLogin, setNeedsLogin] = useState(false);
+  const [password, setPassword] = useState("");
 
   useEffect(() => {
     if (!supabase) return;
@@ -80,6 +83,10 @@ export function SessionExpiryNotice() {
       current = session;
       initialized = true;
       setError(null);
+      if (session) {
+        setNeedsLogin(false);
+        setPassword("");
+      }
       updateNotice();
     }
 
@@ -98,12 +105,14 @@ export function SessionExpiryNotice() {
     };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", updateNotice);
+    window.addEventListener("online", updateNotice);
     return () => {
       disposed = true;
       clearTimeout(timer);
       subscription.unsubscribe();
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", updateNotice);
+      window.removeEventListener("online", updateNotice);
     };
   }, []);
 
@@ -114,14 +123,32 @@ export function SessionExpiryNotice() {
     try {
       const token = await refreshAccessToken(notice.token);
       if (!token) {
-        setError("Inicia sesión en otra pestaña con la misma cuenta y vuelve aquí. Mantén esta página abierta para conservar las notas pendientes.");
+        setNeedsLogin(true);
+        setError("La sesión ya no se puede renovar. Confirma tu contraseña aquí para continuar sin perder las notas pendientes.");
         return;
       }
       setNotice(null);
       toast.success("Sesión renovada. Puedes continuar trabajando.");
     } catch {
-      setError("No se pudo renovar la sesión. Revisa tu conexión y vuelve a intentarlo. Si persiste, inicia sesión en otra pestaña con la misma cuenta. No recargues esta página.");
+      setError("No se pudo renovar la sesión. Revisa tu conexión y vuelve a intentarlo en un minuto, o confirma tu contraseña aquí. No recargues esta página.");
     } finally {
+      setIsRenewing(false);
+    }
+  }
+
+  async function signInAgain() {
+    if (!password || isRenewing) return;
+    setIsRenewing(true);
+    setError(null);
+    try {
+      await login({ email, password });
+      setNotice(null);
+      setNeedsLogin(false);
+      toast.success("Sesión restablecida. Puedes continuar trabajando.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "No se pudo iniciar sesión. Inténtalo de nuevo.");
+    } finally {
+      setPassword("");
       setIsRenewing(false);
     }
   }
@@ -136,24 +163,39 @@ export function SessionExpiryNotice() {
       onCancel={(event) => event.preventDefault()}
       className="fixed inset-0 m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-xl border border-blue-200 bg-white p-6 text-institutional-gray-dark shadow-xl backdrop:bg-slate-900/50"
     >
-      <div className="flex flex-col gap-6">
+      <form className="flex flex-col gap-6" onSubmit={(event) => {
+        event.preventDefault();
+        void (needsLogin ? signInAgain() : continueSession());
+      }}>
         <div className="min-w-0" role="status" aria-live="polite">
           <h2 id="session-expiry-title" className="text-xl font-semibold text-balance">
             {notice.expired ? "Tu sesión necesita renovarse" : "Tu sesión está próxima a vencer"}
           </h2>
           <p id="session-expiry-description" className="mt-3 text-base text-pretty">
-            Continúa la sesión para seguir trabajando. Las notas pendientes se envían al pulsar Guardar.
+            {needsLogin ? "Confirma tu contraseña para recuperar la sesión de esta cuenta." : "Continúa la sesión para seguir trabajando."} Las notas pendientes se conservan en esta página y se envían al pulsar Guardar.
           </p>
         </div>
+        {needsLogin ? (
+          <div className="flex flex-col gap-3">
+            <label className="text-sm" htmlFor="session-email">Cuenta</label>
+            <input id="session-email" name="username" type="email" autoComplete="username" value={email} readOnly className="rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-base" />
+            <label className="text-sm" htmlFor="session-password">Contraseña</label>
+            <input id="session-password" name="password" type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} disabled={isRenewing} className="rounded-md border border-slate-300 px-3 py-2 text-base focus-visible:outline-2 focus-visible:outline-blue-700" />
+          </div>
+        ) : null}
         <button
-          type="button"
+          type="submit"
           disabled={isRenewing}
-          onClick={() => void continueSession()}
           className="rounded-md bg-blue-700 px-3 py-2 text-base font-semibold text-white hover:bg-blue-800 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:cursor-wait disabled:opacity-60"
         >
-          {isRenewing ? "Renovando sesión..." : "Continuar sesión"}
+          {isRenewing ? "Recuperando sesión..." : needsLogin ? "Iniciar sesión y continuar" : "Continuar sesión"}
         </button>
-      </div>
+        {!needsLogin ? (
+          <button type="button" onClick={() => { setNeedsLogin(true); setError(null); }} className="text-sm text-blue-700 underline hover:text-blue-800 focus-visible:outline-2 focus-visible:outline-blue-700">
+            Confirmar contraseña para recuperar la sesión
+          </button>
+        ) : null}
+      </form>
       {error ? <p role="alert" className="mt-3 text-sm text-red-800 text-pretty">{error}</p> : null}
     </dialog>
   );

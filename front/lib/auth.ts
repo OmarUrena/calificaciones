@@ -1,4 +1,4 @@
-import { apiFetch, clearStoredToken, setStoredToken } from "@/lib/api";
+import { ApiError, apiFetch, clearStoredToken, setStoredToken } from "@/lib/api";
 import { supabase } from "@/lib/session";
 import type { CurrentUser, LoginCredentials, UserRole } from "@/types/auth";
 
@@ -24,8 +24,10 @@ export async function login(credentials: LoginCredentials) {
       user,
     };
   } catch (error) {
-    clearStoredToken();
-    void supabase.auth.signOut();
+    if (error instanceof ApiError && error.status === 401) {
+      clearStoredToken();
+      await supabase.auth.signOut({ scope: "local" });
+    }
     throw error;
   }
 }
@@ -35,7 +37,7 @@ export async function getCurrentUser() {
 }
 
 export function logout() {
-  void supabase?.auth.signOut();
+  void supabase?.auth.signOut({ scope: "local" });
   clearStoredToken();
 }
 

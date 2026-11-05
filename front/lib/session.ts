@@ -1,11 +1,16 @@
 import { createClient } from "@supabase/supabase-js";
 
+import { createAuthFetch } from "@/lib/auth-fetch";
+
 const TOKEN_KEY = "califapp_token";
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 export const supabase = url && key
-  ? createClient(url, key, { auth: { autoRefreshToken: true, persistSession: true } })
+  ? createClient(url, key, {
+      auth: { autoRefreshToken: true, persistSession: true },
+      global: { fetch: createAuthFetch(url) },
+    })
   : null;
 
 export function setStoredToken(token: string) {

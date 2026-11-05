@@ -36,7 +36,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       <AppSidebar user={user} />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar user={user} />
-        {user ? <SessionExpiryNotice /> : null}
+        {user ? <SessionExpiryNotice email={user.email} /> : null}
         <main className="flex-1 p-4 md:p-6">{children}</main>
       </div>
     </div>

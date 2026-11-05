@@ -22,6 +22,7 @@ let listener;
 const storage = new Map([["califapp_token", "expired-copy"]]);
 const document = { cookie: "" };
 const session = load("../lib/session.ts", {
+  "@/lib/auth-fetch": { createAuthFetch: () => async () => { throw new Error("No live requests in this test"); } },
   "@supabase/supabase-js": {
     createClient: () => ({ auth: {
       onAuthStateChange: (callback) => { listener = callback; },
@@ -114,5 +115,29 @@ reset([401, 200]);
 await api.uploadFile("/import", { file: new File(["grades"], "grades.csv") });
 assert.equal(requests[0].body, requests[1].body);
 assert.equal(requests[1].headers.has("Content-Type"), false);
+
+let profileStatus = 503;
+const authCalls = [];
+const auth = load("../lib/auth.ts", {
+  "@/lib/api": {
+    ApiError: api.ApiError,
+    apiFetch: async () => { throw new api.ApiError(profileStatus, "SERVER_ERROR", "Profile unavailable"); },
+    setStoredToken: () => authCalls.push("set-token"),
+    clearStoredToken: () => authCalls.push("clear-token"),
+  },
+  "@/lib/session": { supabase: { auth: {
+    signInWithPassword: async () => ({ data: { session: { access_token: "new-session" } }, error: null }),
+    signOut: async (options) => { authCalls.push(options.scope); return { error: null }; },
+  } } },
+});
+await assert.rejects(auth.login({ email: "teacher@example.test", password: "test" }));
+assert.deepEqual(authCalls, ["set-token"], "a temporary profile failure must not revoke a valid login");
+profileStatus = 401;
+authCalls.length = 0;
+await assert.rejects(auth.login({ email: "teacher@example.test", password: "test" }));
+assert.deepEqual(authCalls, ["set-token", "clear-token", "local"], "a rejected profile only signs out this session");
+authCalls.length = 0;
+auth.logout();
+assert.deepEqual(authCalls, ["local", "clear-token"], "explicit logout must not revoke other devices' refresh tokens");
 
 console.log("Session regression checks passed: renewal, synchronization, concurrency, bounded retries, errors, downloads and uploads.");
