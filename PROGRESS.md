@@ -1,5 +1,12 @@
 # PROGRESS.md
 
+# Avance del 2026-11-05: restauración de sesiones
+
+- Revertidos únicamente los cambios de sesiones de `5f57af7`, usando `55dc194` como referencia exacta para el servicio de autenticación, los providers, el layout, el hook y las funciones de login/logout. Se retiran `SessionAccountGuard` y las pruebas añadidas exclusivamente para el comportamiento revertido.
+- Se conservan las mejoras de importación acumulativa, transacciones, auditorías y bloqueo de períodos, además de los cambios posteriores del boletín y la regional educativa.
+- Por petición expresa del usuario, el aviso «Continuar sesión» conserva el comportamiento de `55dc194`; ese componente ya existía y no había cambiado en `5f57af7`.
+- Verificación: builds backend y frontend, TypeScript frontend, `check-session.mjs`, `check-session-notice.mjs` y 52 pruebas de importaciones, períodos y notas enteras correctos. Las pruebas usan servicios simulados; no se modificó la base de datos ni se desplegaron los cambios.
+
 # Avance del 2026-11-04: importación acumulativa y sesiones
 
 - Implementación sobre `origin/main` (`9ee70d6`) en `feature/mejoras-importacion-sesion`, sin fusionar la rama antigua. Se conserva el control de P/RP en `SchoolYear` y la validación de notas enteras.
