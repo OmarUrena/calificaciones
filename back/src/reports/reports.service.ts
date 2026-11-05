@@ -433,15 +433,16 @@ export class ReportsService {
     const studentName = `${student.firstName} ${student.lastName}`;
 
     return `
-      <section class="report-page">
-        <section class="student-info">
-          <div><strong>Estudiante:</strong> ${this.escapeHtml(studentName)}</div>
-          <div><strong>Número de lista:</strong> ${student.listNumber}</div>
-          <div><strong>Curso:</strong> ${this.escapeHtml(student.course.name)}</div>
-        </section>
-
-        ${this.buildAcademicSection(data, period)}
-        ${this.buildTechnicalSection(data, period)}
+      <section class="report-page grades-page period-${period}">
+        <div class="grades-content">
+          <section class="student-info">
+            <div><strong>Estudiante:</strong> ${this.escapeHtml(studentName)}</div>
+            <div><strong>Número de lista:</strong> ${student.listNumber}</div>
+            <div><strong>Curso:</strong> ${this.escapeHtml(student.course.name)}</div>
+          </section>
+          ${this.buildAcademicSection(data, period)}
+          ${this.buildTechnicalSection(data, period)}
+        </div>
       </section>
     `;
   }
@@ -690,33 +691,39 @@ export class ReportsService {
           <style>
             @page { size: letter landscape; margin: 10mm; }
             * { box-sizing: border-box; }
-            body { color: #111827; font-family: Arial, sans-serif; font-size: 9px; margin: 0; }
+            body { color: #111827; font-family: Arial, sans-serif; font-size: 12px; margin: 0; }
             h1 { font-size: 16px; margin: 0 0 4px; }
-            h2 { border-bottom: 1px solid #d1d5db; font-size: 12px; margin: 14px 0 6px; padding-bottom: 4px; }
-            h3 { font-size: 10px; margin: 10px 0 4px; }
+            h2 { border-bottom: 1px solid #d1d5db; font-size: 14px; margin: 10px 0 5px; padding-bottom: 3px; }
+            h3 { font-size: 12px; margin: 8px 0 4px; }
             p { margin: 2px 0; }
-            table { border-collapse: collapse; margin-top: 8px; width: 100%; }
-            th, td { border: 1px solid #d1d5db; padding: 4px 5px; text-align: left; vertical-align: top; }
+            table { border-collapse: collapse; margin-top: 5px; width: 100%; }
+            th, td { border: 1px solid #d1d5db; padding: 5px 3px; text-align: left; vertical-align: middle; }
             th { background: #f3f4f6; font-weight: 700; }
             thead { display: table-header-group; }
             tr { break-inside: avoid; }
-            .numeric { text-align: center; }
+            .numeric { text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
             .recovery { background: #f8fafc; }
             .average { background: #eaf2f8; font-weight: 700; text-align: center; }
             .subject-name { font-weight: 700; vertical-align: middle; }
-            .academic-detail { font-size: 7px; table-layout: fixed; }
-            .academic-detail th, .academic-detail td { line-height: 1.15; overflow-wrap: anywhere; padding: 3px 1px; }
-            .academic-detail .subject-column { width: 110px; }
-            .academic-detail .competency-heading { font-size: 7.5px; text-align: center; }
-            .academic-summary { font-size: 8px; }
-            .academic-summary th, .academic-summary td { padding: 4px; }
-            .technical-grid { font-size: 8px; table-layout: fixed; }
-            .technical-grid th, .technical-grid td { padding: 4px 2px; vertical-align: middle; }
-            .technical-grid .module-column { width: 190px; }
-            .technical-grid .result-column { width: 48px; }
-            .technical-grid .status-column { width: 68px; }
-            .report-page { break-after: page; min-height: 185mm; }
+            .grades-content { font-size: 12px; }
+            .period-1 .grades-content { font-size: 15px; }
+            .period-2 .grades-content { font-size: 14px; }
+            .period-3 .grades-content { font-size: 12px; }
+            .academic-detail { font-size: inherit; table-layout: fixed; }
+            .academic-detail th, .academic-detail td { line-height: 1.2; padding: 5px 1px; }
+            .academic-detail .subject-column { width: 19%; }
+            .academic-detail .subject-name { font-size: 12px; overflow-wrap: anywhere; }
+            .academic-detail .competency-heading { font-size: 11px; text-align: center; overflow-wrap: anywhere; }
+            .academic-detail.period-4 { font-size: 10px; }
+            .academic-detail.period-4 .competency-heading { font-size: 10px; }
+            .academic-summary { font-size: 11px; table-layout: auto; }
+            .academic-summary .numeric { width: 1%; padding: 5px 6px; }
+            .technical-grid { font-size: inherit; table-layout: auto; }
+            .technical-grid .numeric { width: 1%; padding: 5px 6px; }
+            .technical-grid .subject-name { font-size: 12px; overflow-wrap: anywhere; }
+            .report-page { break-after: page; width: 259.4mm; max-width: 100%; }
             .report-page:last-child { break-after: auto; }
+            .grades-page { height: 195mm; }
             .student-info { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr) auto minmax(0, 2fr); align-items: baseline; border-bottom: 1px solid #111827; padding-bottom: 8px; }
             .student-info > div { min-width: 0; overflow-wrap: anywhere; }
             .report-cover { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 22mm; padding: 4mm 0; color: #000; }
@@ -760,7 +767,29 @@ export class ReportsService {
 
     try {
       const page = await browser.newPage();
+      await page.emulateMedia({ media: 'print' });
       await page.setContent(html, { waitUntil: 'networkidle' });
+      await page.evaluate(async () => {
+        await document.fonts.ready;
+        // Fit each student's grades independently, including unusually long subject lists.
+        // Leave a small allowance for Chromium's print rounding at page boundaries.
+        for (const sheet of document.querySelectorAll<HTMLElement>('.grades-page')) {
+          const content = sheet.querySelector<HTMLElement>('.grades-content');
+          if (!content) continue;
+          let zoom = 1;
+          for (let attempt = 0; attempt < 8; attempt++) {
+            const bounds = content.getBoundingClientRect();
+            const scale = Math.min(
+              1,
+              (sheet.clientHeight - 2) / bounds.height,
+              sheet.clientWidth / Math.max(bounds.width, content.scrollWidth * zoom),
+            );
+            if (scale >= 1) break;
+            zoom *= scale * 0.995;
+            content.style.zoom = String(zoom);
+          }
+        }
+      });
       const pdf = await page.pdf({
         format: 'Letter',
         landscape,
