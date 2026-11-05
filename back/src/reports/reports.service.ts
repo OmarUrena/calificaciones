@@ -443,6 +443,16 @@ export class ReportsService {
           ${this.buildAcademicSection(data, period)}
           ${this.buildTechnicalSection(data, period)}
         </div>
+        <footer class="grades-signatures">
+          <div class="grades-signature">
+            <div class="grades-signature-name">INOCENCIA FABIAN</div>
+            <div>DIRECTORA</div>
+          </div>
+          <div class="grades-signature">
+            <div class="grades-signature-name">${this.escapeHtml(student.course.titular?.name?.trim().toUpperCase() || 'NOMBRE DEL MAESTRO')}</div>
+            <div>MAESTRO TITULAR</div>
+          </div>
+        </footer>
       </section>
     `;
   }
@@ -722,7 +732,10 @@ export class ReportsService {
             .technical-grid .subject-name { font-size: 12px; overflow-wrap: anywhere; }
             .report-page { break-after: page; width: 259.4mm; max-width: 100%; }
             .report-page:last-child { break-after: auto; }
-            .grades-page { height: 195mm; }
+            .grades-page { height: 195mm; position: relative; }
+            .grades-signatures { position: absolute; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-between; gap: 32px; padding-top: 32px; font-size: 12px; line-height: 16px; break-inside: avoid; }
+            .grades-signature { width: 32%; text-align: center; }
+            .grades-signature-name { border-top: 1px solid #111827; padding-top: 4px; font-weight: 700; overflow-wrap: anywhere; }
             .student-info { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr) auto minmax(0, 2fr); align-items: baseline; border-bottom: 1px solid #111827; padding-bottom: 8px; }
             .student-info > div { min-width: 0; overflow-wrap: anywhere; }
             .report-cover { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14mm; padding: 3mm 0; color: #172b40; font-size: 14px; line-height: 1.4; }
@@ -775,12 +788,14 @@ export class ReportsService {
         for (const sheet of document.querySelectorAll<HTMLElement>('.grades-page')) {
           const content = sheet.querySelector<HTMLElement>('.grades-content');
           if (!content) continue;
+          const signatures = sheet.querySelector<HTMLElement>('.grades-signatures');
+          const availableHeight = sheet.clientHeight - (signatures?.offsetHeight ?? 0) - 16;
           let zoom = 1;
           for (let attempt = 0; attempt < 8; attempt++) {
             const bounds = content.getBoundingClientRect();
             const scale = Math.min(
               1,
-              (sheet.clientHeight - 2) / bounds.height,
+              (availableHeight - 2) / bounds.height,
               sheet.clientWidth / Math.max(bounds.width, content.scrollWidth * zoom),
             );
             if (scale >= 1) break;
