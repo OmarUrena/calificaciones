@@ -21,11 +21,11 @@ export const envValidationSchema = Joi.object({
     .trim()
     .min(1)
     .max(160)
-    .default('Científica y Tecnológica - Ambiental y de la Salud'),
+    .default('Ética y Ciudadana - Desarrollo Personal y Espiritual'),
   ACADEMIC_BLOCK_4_TITLE: Joi.string()
     .trim()
     .min(1)
     .max(160)
-    .default('Ética y Ciudadana - Desarrollo Personal y Espiritual'),
+    .default('Científica y Tecnológica - Ambiental y de la Salud'),
   JWT_SECRET: Joi.string().min(16).required(),
 });

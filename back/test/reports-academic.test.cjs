@@ -7,8 +7,8 @@ const { ReportsService } = require('../dist/src/reports/reports.service');
 const blockTitles = [
   'Comunicativa',
   'Pensamiento Lógico, Creativo y Crítico - Resolución de Problemas',
-  'Científica y Tecnológica - Ambiental y de la Salud',
   'Ética y Ciudadana - Desarrollo Personal y Espiritual',
+  'Científica y Tecnológica - Ambiental y de la Salud',
 ];
 const config = { get: (key) => (key === 'reports.academicBlockTitles' ? blockTitles : undefined) };
 const subject = { id: 'math', name: 'Matemática & Lógica', displayOrder: 20 };
